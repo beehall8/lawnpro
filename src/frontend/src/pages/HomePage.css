@@ -1,0 +1,39 @@
+.lawn-hero { position: relative; isolation: isolate; overflow: hidden; background: #f8f9f3; }
+.lawn-hero-photo { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: center 55%; z-index: -2; }
+.lawn-hero-shade { position: absolute; inset: 0; z-index: -1; background: linear-gradient(90deg, #f8f9f3 0%, rgba(248,249,243,.97) 27%, rgba(248,249,243,.85) 39%, rgba(248,249,243,.25) 55%, transparent 68%); }
+.lawn-hero-inner { max-width: 1440px; margin: auto; padding: 80px 40px 88px; min-height: 660px; display: flex; align-items: center; }
+.lawn-hero-copy { width: 56%; max-width: 690px; }
+.lawn-hero h1 { font-family: Georgia, 'Times New Roman', serif; font-size: clamp(44px, 5.3vw, 78px); line-height: 1.08; font-weight: 700; letter-spacing: -2px; color: #272e20; margin: 0 0 22px; }
+.lawn-hero h1 span { color: #28652a; }
+.lawn-hero-copy > p { font-size: 19px; line-height: 1.65; color: #394b42; max-width: 540px; margin-bottom: 28px; }
+.lawn-hero-actions { display: flex; gap: 18px; flex-wrap: wrap; }
+.lawn-hero-actions a { display: inline-flex; align-items: center; justify-content: center; gap: 18px; padding: 17px 25px; border: 2px solid #2b742a; border-radius: 8px; font-size: 18px; font-weight: 700; transition: background .2s; }
+.lawn-hero-primary { background: #2b742a; color: white; }
+.lawn-hero-primary:hover { background: #205b20; }
+.lawn-hero-secondary { background: #fafbf6e8; color: #2b742a; }
+.lawn-hero-secondary:hover { background: #eaf2e4; }
+.lawn-hero-actions a:focus-visible { outline: 3px solid #243c21; outline-offset: 4px; }
+.lawn-hero-benefits { margin-top: 36px; display: flex; gap: 22px; }
+.lawn-hero-benefits > div { display: flex; align-items: center; gap: 10px; flex: 1; }
+.lawn-hero-benefits svg { width: 34px; height: 34px; flex-shrink: 0; color: #648e3e; }
+.lawn-hero-benefits span { font-size: 12px; line-height: 1.5; color: #425046; }
+.lawn-hero-benefits strong { display: block; font-size: 13px; color: #243c30; margin-bottom: 3px; }
+@media (max-width: 900px) {
+  .lawn-hero-inner { padding: 60px 24px; min-height: 610px; }
+  .lawn-hero-copy { width: 65%; }
+  .lawn-hero-benefits { flex-wrap: wrap; gap: 16px; }
+  .lawn-hero-benefits > div { flex: 0 1 170px; }
+}
+@media (max-width: 600px) {
+  .lawn-hero { padding-bottom: 270px; }
+  .lawn-hero-photo { top: auto; bottom: 0; height: 330px; object-position: 65% center; }
+  .lawn-hero-shade { background: linear-gradient(180deg, #f8f9f3 0%, #f8f9f3 59%, rgba(248,249,243,.8) 65%, transparent 76%); }
+  .lawn-hero-inner { padding: 42px 22px 22px; min-height: auto; }
+  .lawn-hero-copy { width: 100%; }
+  .lawn-hero h1 { font-size: clamp(39px, 10.5vw, 60px); letter-spacing: -1.5px; }
+  .lawn-hero-copy > p { font-size: 16px; }
+  .lawn-hero-actions { gap: 12px; }
+  .lawn-hero-actions a { width: 100%; font-size: 17px; padding: 13px 16px; }
+  .lawn-hero-benefits { margin-top: 26px; gap: 13px; }
+  .lawn-hero-benefits > div { flex: 1 1 100%; }
+}

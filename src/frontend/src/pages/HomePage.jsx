@@ -1,3 +1,4 @@
+import './HomePage.css'
 import { Link } from 'react-router-dom'
 import { CheckCircle, Star, MapPin, Shield, Clock, DollarSign } from 'lucide-react'
 
@@ -42,38 +43,21 @@ function HomePage() {
       </nav>
 
       {/* Hero Section */}
-      <section className="py-20 px-4">
-        <div className="max-w-7xl mx-auto text-center">
-          <h1 className="text-5xl md:text-6xl font-bold text-gray-900 mb-6">
-            Professional Lawn Care,
-            <br />
-            <span className="text-lawn-600">Delivered to Your Door</span>
-          </h1>
-          <p className="text-xl text-gray-600 mb-8 max-w-2xl mx-auto">
-            Connect with trusted lawn care professionals in your area. Book mowing, trimming, edging, and more in minutes.
-          </p>
-          <div className="flex flex-col sm:flex-row gap-4 justify-center">
-            <Link to="/book" className="btn-primary text-lg px-8 py-4">
-              Book Lawn Service
-            </Link>
-            <Link to="/vendor/dashboard" className="btn-secondary text-lg px-8 py-4">
-              Become a Pro
-            </Link>
-          </div>
-          
-          {/* Trust Badges */}
-          <div className="mt-12 flex flex-wrap justify-center gap-8">
-            <div className="flex items-center space-x-2 text-gray-600">
-              <CheckCircle className="text-lawn-500" />
-              <span>Verified & Insured</span>
+      <section className="lawn-hero" aria-labelledby="hero-title">
+        <img className="lawn-hero-photo" src="/lawn-pro-hero.png" alt="Lawn care professional mowing a sunny suburban yard with a family outside their home" fetchPriority="high" />
+        <div className="lawn-hero-shade" />
+        <div className="lawn-hero-inner">
+          <div className="lawn-hero-copy">
+            <h1 id="hero-title">Beautiful Lawns,<br /><span>Hassle-Free.</span></h1>
+            <p>Lawn Pro connects you with trusted, local lawn care professionals. Quality service. Fair prices. Great results.</p>
+            <div className="lawn-hero-actions">
+              <Link to="/book" className="lawn-hero-primary">Book Lawn Service <span aria-hidden="true">↗</span></Link>
+              <Link to="/vendor/dashboard" className="lawn-hero-secondary">Become a Pro</Link>
             </div>
-            <div className="flex items-center space-x-2 text-gray-600">
-              <Star className="text-yellow-500 fill-current" />
-              <span>4.9/5 Average Rating</span>
-            </div>
-            <div className="flex items-center space-x-2 text-gray-600">
-              <Shield className="text-lawn-500" />
-              <span>Satisfaction Guaranteed</span>
+            <div className="lawn-hero-benefits">
+              <div><CheckCircle aria-hidden="true" /><span><strong>Local Lawn Care</strong>Professionals in your area</span></div>
+              <div><Shield aria-hidden="true" /><span><strong>Clear Pricing</strong>Review service estimates</span></div>
+              <div><Clock aria-hidden="true" /><span><strong>Easy Scheduling</strong>Find your preferred time</span></div>
             </div>
           </div>
         </div>
