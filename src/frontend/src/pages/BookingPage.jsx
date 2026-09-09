@@ -1,6 +1,7 @@
+import './BookingPage.css'
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
-import { Check, ChevronRight, MapPin, Calendar, Clock, DollarSign } from 'lucide-react'
+import { Check, ChevronRight, MapPin, Calendar, Clock, DollarSign, Leaf, ShieldCheck, ShoppingCart, Tag, Scissors, Sprout, Wind, Ruler, Droplets } from 'lucide-react'
 
 const services = [
   { id: 'mowing', name: 'Mowing', price: 35, icon: '🌱', description: 'Professional lawn mowing with cleanup' },
@@ -10,6 +11,8 @@ const services = [
   { id: 'weed-control', name: 'Weed Control', price: 40, icon: '🌿', description: 'Weed removal and prevention' },
   { id: 'leaf-removal', name: 'Leaf Removal', price: 30, icon: '🍂', description: 'Fall leaf cleanup service' },
 ]
+
+const serviceIcons = { mowing: Sprout, trimming: Scissors, edging: Ruler, fertilizing: Droplets, 'weed-control': Leaf, 'leaf-removal': Wind }
 
 const frequencies = [
   { id: 'onetime', name: 'One-Time', multiplier: 1, popular: false },
@@ -56,41 +59,22 @@ function BookingPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      {/* Header */}
-      <nav className="bg-white shadow-sm sticky top-0 z-50">
-        <div className="max-w-7xl mx-auto px-4 py-4">
-          <Link to="/" className="flex items-center space-x-2 text-lawn-600">
-            <span className="text-2xl">🌱</span>
-            <span className="font-bold">Lawn Pro</span>
-          </Link>
-        </div>
-      </nav>
-
-      {/* Progress Steps */}
-      <div className="bg-white border-b">
-        <div className="max-w-4xl mx-auto px-4 py-6">
-          <div className="flex items-center justify-between">
-            {['Address', 'Services', 'Schedule', 'Payment'].map((label, index) => (
-              <div key={label} className="flex items-center">
-                <div className={`flex items-center justify-center w-8 h-8 rounded-full ${
-                  step > index + 1 ? 'bg-lawn-600 text-white' :
-                  step === index + 1 ? 'bg-lawn-600 text-white' : 'bg-gray-200 text-gray-600'
-                }`}>
-                  {step > index + 1 ? <Check size={16} /> : index + 1}
-                </div>
-                <span className={`ml-2 text-sm font-medium ${
-                  step === index + 1 ? 'text-lawn-600' : 'text-gray-600'
-                }`}>{label}</span>
-                {index < 3 && <ChevronRight className="mx-2 text-gray-400" size={16} />}
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
-
-      {/* Main Content */}
-      <div className="max-w-4xl mx-auto px-4 py-8">
+    <div className="booking-layout">
+      <aside className="booking-sidebar">
+        <Link to="/" className="booking-brand"><Leaf aria-hidden="true" /><span>LAWN <b>PRO</b></span></Link>
+        <ol className="booking-steps" aria-label="Booking progress">
+          {['Address', 'Services', 'Schedule', 'Payment'].map((label, index) => (
+            <li key={label} className={step === index + 1 ? 'active' : step > index + 1 ? 'complete' : ''} aria-current={step === index + 1 ? 'step' : undefined}>
+              <button type="button" disabled={index + 1 > step} onClick={() => setStep(index + 1)}>
+                <span className="step-number">{step > index + 1 ? <Check size={18} /> : index + 1}</span>
+                <span><strong>{label}</strong><small>{index === 0 ? (address.street || 'Enter your address') : ['','Select your services','Choose a date & time','Review your selection'][index]}</small></span>
+              </button>
+            </li>
+          ))}
+        </ol>
+        <div className="booking-help"><Leaf /><strong>A little care. A greener lawn.</strong><p>Choose the services that fit your outdoor space.</p></div>
+      </aside>
+      <main className="booking-main">
         {/* Step 1: Address */}
         {step === 1 && (
           <div className="card">
@@ -158,35 +142,20 @@ function BookingPage() {
 
         {/* Step 2: Services */}
         {step === 2 && (
-          <div className="card">
-            <h2 className="text-2xl font-bold mb-6">Select Your Services</h2>
-            <div className="grid md:grid-cols-2 gap-4 mb-6">
-              {services.map((service) => (
-                <div
-                  key={service.id}
-                  onClick={() => toggleService(service.id)}
-                  className={`service-card relative ${
-                    selectedServices.includes(service.id) ? 'selected' : ''
-                  }`}
-                >
-                  <div className="flex items-start justify-between">
-                    <div className="flex items-start space-x-3">
-                      <span className="text-3xl">{service.icon}</span>
-                      <div>
-                        <h3 className="font-semibold text-lg">{service.name}</h3>
-                        <p className="text-sm text-gray-600">{service.description}</p>
-                      </div>
-                    </div>
-                    <div className="text-right">
-                      <p className="text-lg font-bold text-lawn-600">${service.price}</p>
-                      {selectedServices.includes(service.id) && (
-                        <Check className="text-lawn-600 ml-auto mt-1" size={20} />
-                      )}
-                    </div>
-                  </div>
-                </div>
-              ))}
+          <div className="service-selection">
+            <header className="selection-heading"><h1><Sprout aria-hidden="true" />Select Your Services</h1><p>Choose the services you need for a healthy, beautiful lawn.</p></header>
+            <div className="booking-service-grid">
+              {services.map((service) => {
+                const Icon = serviceIcons[service.id]
+                return <label key={service.id} className={`booking-service-card ${selectedServices.includes(service.id) ? 'is-selected' : ''}`}>
+                  <input type="checkbox" checked={selectedServices.includes(service.id)} onChange={() => toggleService(service.id)} aria-label={`Select ${service.name}`} />
+                  <span className="service-art"><Icon aria-hidden="true" strokeWidth={1.4} /></span>
+                  <h2>{service.name}</h2><p>{service.description}</p>
+                  <span className="service-price">Starting at <strong>${service.price}</strong></span>
+                </label>
+              })}
             </div>
+            <div className="service-note"><ShieldCheck aria-hidden="true" /><div><strong>Lawn care that fits your needs</strong><p>Select one or more services to build your estimate.</p></div></div>
 
             {/* Frequency Selection */}
             <div className="border-t pt-6">
@@ -315,19 +284,32 @@ function BookingPage() {
           >
             Back
           </button>
-          <button
+          {step !== 2 && <button
             onClick={handleContinue}
-            disabled={step === 1 && !address.street || step === 2 && selectedServices.length === 0}
+            disabled={step === 4 || step === 1 && !address.street || step === 2 && selectedServices.length === 0}
             className={`btn-primary px-8 py-3 ${
               (step === 1 && !address.street) || (step === 2 && selectedServices.length === 0)
                 ? 'opacity-50 cursor-not-allowed'
                 : ''
             }`}
           >
-            {step === 4 ? 'Place Order' : 'Continue'}
-          </button>
+            {step === 4 ? 'Checkout coming soon' : 'Continue'}
+          </button>}
         </div>
-      </div>
+      </main>
+      <aside className="booking-summary">
+        <h2>Order Summary</h2>
+        <div className="summary-count"><Tag aria-hidden="true" /><div><strong>{selectedServices.length} {selectedServices.length === 1 ? 'service' : 'services'} selected</strong><p>{selectedServices.length ? 'Your lawn care estimate' : 'Select one or more services to see your total.'}</p></div></div>
+        <div aria-live="polite" aria-atomic="true">
+          {services.filter(service => selectedServices.includes(service.id)).map(service => <div className="summary-line" key={service.id}><span>{service.name}</span><span>${service.price.toFixed(2)}</span></div>)}
+          <div className="summary-line"><span>Subtotal {frequency !== 'onetime' && '(after discount)'}</span><span>${calculateTotal().toFixed(2)}</span></div>
+          <div className="summary-line"><span>Platform fee (20%)</span><span>${(calculateTotal() * 0.2).toFixed(2)}</span></div>
+          <div className="summary-total"><span>Estimated total</span><span>${(calculateTotal() * 1.2).toFixed(2)}</span></div>
+        </div>
+        {step === 2 && <button type="button" className="summary-continue" disabled={!selectedServices.length} onClick={handleContinue}><ShoppingCart size={20} />Continue to Schedule</button>}
+        <p className="summary-disclaimer">Preview your services. Online checkout is coming soon.</p>
+        <div className="summary-benefits"><div><Calendar /><span><strong>Easy Scheduling</strong>Choose your preferred time.</span></div><div><MapPin /><span><strong>Local Lawn Care</strong>Services for your outdoor space.</span></div><div><Leaf /><span><strong>A Healthier Lawn</strong>Care through every season.</span></div></div>
+      </aside>
     </div>
   )
 }
