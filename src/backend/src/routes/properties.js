@@ -1,5 +1,6 @@
 import express from 'express'
 import { z } from 'zod'
+import { validateAddress, estimateUnavailable } from '../../../shared/lawn-estimation.mjs'
 
 const router = express.Router()
 
@@ -12,8 +13,17 @@ const propertySchema = z.object({
   city: z.string().min(1),
   state: z.string().min(1),
   zip: z.string().min(5),
-  lawnSqFt: z.number().optional(),
+  lawnSqFt: z.number().finite().positive().max(1000000).optional(),
   requestEstimate: z.boolean().optional()
+})
+
+// Provider setup is pending. This endpoint never returns invented measurements.
+router.post('/estimate', (req, res) => {
+  const parsed = propertySchema.safeParse(req.body)
+  if (!parsed.success) return res.status(400).json({ success: false, error: 'Enter a complete physical address.' })
+  const error = validateAddress(parsed.data)
+  if (error) return res.status(400).json({ success: false, error })
+  return res.status(503).json(estimateUnavailable)
 })
 
 // Create property
@@ -21,22 +31,22 @@ router.post('/', async (req, res) => {
   try {
     const { street, city, state, zip, lawnSqFt, requestEstimate } = propertySchema.parse(req.body)
     
-    // Mock satellite estimate if requested
-    let estimatedSqFt = lawnSqFt
-    if (requestEstimate && !lawnSqFt) {
-      // In production, call Google Maps API here
-      estimatedSqFt = Math.floor(Math.random() * 8000) + 2000 // Mock: 2000-10000 sq ft
-    }
-    
+    const error = validateAddress({ street, city, state, zip })
+    if (error) return res.status(400).json({ success: false, error })
+    if (requestEstimate) return res.status(503).json(estimateUnavailable)
+
     const property = {
       id: properties.length + 1,
       street,
       city,
       state,
       zip,
-      latitude: 30.2672, // Austin, TX mock coordinates
-      longitude: -97.7431,
-      estimatedLawnSqFt: estimatedSqFt,
+      latitude: null,
+      longitude: null,
+      estimatedLawnSqFt: null,
+      lawnSqFt: lawnSqFt ?? null,
+      measurementSource: lawnSqFt ? 'customer' : 'unknown',
+      verificationStatus: 'unverified',
       createdAt: new Date()
     }
     

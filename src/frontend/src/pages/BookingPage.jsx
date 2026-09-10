@@ -1,5 +1,7 @@
 import './BookingPage.css'
 import { useState } from 'react'
+import { launchZips, validateAddress } from '../../../shared/lawn-estimation.mjs'
+import { lawnSizes, estimateRange, formatRange } from '../../../shared/lawn-sizes.mjs'
 import { Link } from 'react-router-dom'
 import { Check, ChevronRight, MapPin, Calendar, Clock, DollarSign, Leaf, ShieldCheck, ShoppingCart, Tag, Scissors, Sprout, Wind, Ruler, Droplets } from 'lucide-react'
 
@@ -27,11 +29,19 @@ function BookingPage() {
   const [address, setAddress] = useState({
     street: '',
     city: '',
-    state: '',
+    state: 'GA',
     zip: '',
   })
   const [lawnSize, setLawnSize] = useState('')
-  
+  const [addressConfirmed, setAddressConfirmed] = useState(false)
+  const selectedSize = lawnSizes.find(size => size.id === lawnSize)
+  const addressError = validateAddress(address)
+  const canContinueAddress = !addressError && addressConfirmed && !!selectedSize
+  const updateAddress = (field, value) => {
+    setAddress(previous => ({ ...previous, [field]: value }))
+    setAddressConfirmed(false)
+    setLawnSize('')
+  }
   const toggleService = (serviceId) => {
     setSelectedServices(prev => 
       prev.includes(serviceId) 
@@ -40,17 +50,11 @@ function BookingPage() {
     )
   }
   
-  const calculateTotal = () => {
-    const basePrice = selectedServices.reduce((sum, id) => {
-      const service = services.find(s => s.id === id)
-      return sum + (service?.price || 0)
-    }, 0)
-    
-    const freq = frequencies.find(f => f.id === frequency)
-    return Math.round(basePrice * (freq?.multiplier || 1) * 100) / 100
-  }
-  
+  const total = estimateRange(services.filter(service => selectedServices.includes(service.id)), selectedSize, frequencies.find(f => f.id === frequency)?.multiplier || 1)
+
   const handleContinue = () => {
+    if (step === 1 && !canContinueAddress) return
+    if (step === 2 && !selectedServices.length) return
     if (step < 4) setStep(step + 1)
   }
   
@@ -81,61 +85,74 @@ function BookingPage() {
             <h2 className="text-2xl font-bold mb-6">Where's your lawn?</h2>
             <div className="space-y-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Street Address</label>
+                <label htmlFor="address-street" className="block text-sm font-medium text-gray-700 mb-2">Street Address</label>
                 <input
                   type="text"
+                  id="address-street"
                   value={address.street}
-                  onChange={(e) => setAddress({...address, street: e.target.value})}
+                  onChange={(e) => updateAddress('street', e.target.value)}
                   className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-lawn-500 focus:border-transparent"
                   placeholder="123 Main St"
                 />
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">City</label>
+                  <label htmlFor="address-city" className="block text-sm font-medium text-gray-700 mb-2">City</label>
                   <input
                     type="text"
-                    value={address.city}
-                    onChange={(e) => setAddress({...address, city: e.target.value})}
+                    id="address-city"
+                  value={address.city}
+                    onChange={(e) => updateAddress('city', e.target.value)}
                     className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-lawn-500"
-                    placeholder="Austin"
+                    placeholder="Stone Mountain"
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">State</label>
+                  <label htmlFor="address-state" className="block text-sm font-medium text-gray-700 mb-2">State</label>
                   <input
                     type="text"
-                    value={address.state}
-                    onChange={(e) => setAddress({...address, state: e.target.value})}
+                    id="address-state"
+                  value={address.state}
+                    onChange={(e) => updateAddress('state', e.target.value)}
                     className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-lawn-500"
-                    placeholder="TX"
+                    placeholder="GA"
                   />
                 </div>
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">ZIP Code</label>
+                <label htmlFor="address-zip" className="block text-sm font-medium text-gray-700 mb-2">ZIP Code</label>
                 <input
                   type="text"
+                  id="address-zip"
                   value={address.zip}
-                  onChange={(e) => setAddress({...address, zip: e.target.value})}
+                  onChange={(e) => updateAddress('zip', e.target.value)}
                   className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-lawn-500"
-                  placeholder="78701"
+                  placeholder="30083"
                 />
               </div>
               
-              {/* Satellite Estimate Placeholder */}
-              <div className="bg-lawn-50 border border-lawn-200 rounded-lg p-4 mt-6">
-                <div className="flex items-start space-x-3">
-                  <MapPin className="text-lawn-600 mt-1" size={20} />
-                  <div>
-                    <h4 className="font-semibold text-lawn-800">AI Lawn Size Estimation</h4>
-                    <p className="text-sm text-lawn-700 mt-1">
-                      We'll use satellite imagery to estimate your lawn size for accurate pricing.
-                      You can adjust the estimate manually in the next step.
-                    </p>
-                  </div>
+              <p className="text-sm text-gray-600">Launch area: Stone Mountain, Conyers, and Covington. ZIP codes: {launchZips.join(', ')}.</p>
+              {address.zip && addressError && <p role="status" className="text-sm text-red-700">{addressError}</p>}
+              <label className="flex items-start gap-3 text-sm">
+                <input type="checkbox" className="mt-1" checked={addressConfirmed} disabled={!!addressError} onChange={e => setAddressConfirmed(e.target.checked)} />
+                <span>This is the physical address of the lawn I want serviced.</span>
+              </label>
+              <fieldset className="lawn-size-section">
+                <legend>Choose your lawn size</legend>
+                <p>Select the closest range for the grass area you want mowed. Prices and times below are averages for professional mowing.</p>
+                <div className="lawn-size-grid">
+                  {lawnSizes.map(size => <label key={size.id} className={`lawn-size-card ${lawnSize === size.id ? 'is-selected' : ''}`}>
+                    <input type="radio" name="lawn-size" value={size.id} checked={lawnSize === size.id} onChange={() => setLawnSize(size.id)} />
+                    <Sprout aria-hidden="true" />
+                    <strong>{size.name}</strong>
+                    <span>{size.range} sq ft</span>
+                    <span>{size.time} min · Pro average</span>
+                    <b>{formatRange(size)}</b>
+                    <small>Average mowing price</small>
+                  </label>)}
                 </div>
-              </div>
+                <p className="text-sm">At 3,000 or 6,000 sq ft, choose the smaller tier; at 10,000 sq ft, choose XL. Final pricing depends on lawn conditions. Platform fee is additional.</p>
+              </fieldset>
             </div>
           </div>
         )}
@@ -151,7 +168,8 @@ function BookingPage() {
                   <input type="checkbox" checked={selectedServices.includes(service.id)} onChange={() => toggleService(service.id)} aria-label={`Select ${service.name}`} />
                   <span className="service-art"><Icon aria-hidden="true" strokeWidth={1.4} /></span>
                   <h2>{service.name}</h2><p>{service.description}</p>
-                  <span className="service-price">Starting at <strong>${service.price}</strong></span>
+                  <span className="service-price">{service.id === 'mowing' && selectedSize ? 'Average price' : 'Starting at'} <strong>{service.id === 'mowing' && selectedSize ? formatRange(selectedSize) : `$${service.price}`}</strong></span>
+                  {service.id === 'mowing' && selectedSize && <span className="mowing-size-detail">{selectedSize.name} · {selectedSize.range} sq ft<br />{selectedSize.time} min · Pro average</span>}
                 </label>
               })}
             </div>
@@ -238,7 +256,7 @@ function BookingPage() {
               <div className="space-y-3">
                 <div className="flex justify-between">
                   <span>Services ({selectedServices.length})</span>
-                  <span>${calculateTotal().toFixed(2)}</span>
+                  <span>{formatRange(total)}</span>
                 </div>
                 <div className="flex justify-between text-gray-600">
                   <span>Frequency: {frequencies.find(f => f.id === frequency)?.name}</span>
@@ -248,11 +266,11 @@ function BookingPage() {
                 </div>
                 <div className="flex justify-between text-gray-600">
                   <span>Platform Fee</span>
-                  <span>${(calculateTotal() * 0.2).toFixed(2)}</span>
+                  <span>{formatRange(total, 0.2)}</span>
                 </div>
                 <div className="border-t pt-3 flex justify-between font-bold text-lg">
                   <span>Total</span>
-                  <span>${(calculateTotal() * 1.2).toFixed(2)}</span>
+                  <span>{formatRange(total, 1.2)}</span>
                 </div>
               </div>
             </div>
@@ -286,9 +304,9 @@ function BookingPage() {
           </button>
           {step !== 2 && <button
             onClick={handleContinue}
-            disabled={step === 4 || step === 1 && !address.street || step === 2 && selectedServices.length === 0}
+            disabled={step === 4 || step === 1 && !canContinueAddress || step === 2 && selectedServices.length === 0}
             className={`btn-primary px-8 py-3 ${
-              (step === 1 && !address.street) || (step === 2 && selectedServices.length === 0)
+              (step === 1 && !canContinueAddress) || (step === 2 && selectedServices.length === 0)
                 ? 'opacity-50 cursor-not-allowed'
                 : ''
             }`}
@@ -299,15 +317,16 @@ function BookingPage() {
       </main>
       <aside className="booking-summary">
         <h2>Order Summary</h2>
+        {selectedSize && <div className="summary-count"><Ruler aria-hidden="true" /><div><strong>{selectedSize.name} lawn · {selectedSize.range} sq ft</strong><p>{selectedSize.time} min average mowing time</p><button type="button" className="underline text-sm" onClick={() => setStep(1)}>Change lawn size</button></div></div>}
         <div className="summary-count"><Tag aria-hidden="true" /><div><strong>{selectedServices.length} {selectedServices.length === 1 ? 'service' : 'services'} selected</strong><p>{selectedServices.length ? 'Your lawn care estimate' : 'Select one or more services to see your total.'}</p></div></div>
         <div aria-live="polite" aria-atomic="true">
-          {services.filter(service => selectedServices.includes(service.id)).map(service => <div className="summary-line" key={service.id}><span>{service.name}</span><span>${service.price.toFixed(2)}</span></div>)}
-          <div className="summary-line"><span>Subtotal {frequency !== 'onetime' && '(after discount)'}</span><span>${calculateTotal().toFixed(2)}</span></div>
-          <div className="summary-line"><span>Platform fee (20%)</span><span>${(calculateTotal() * 0.2).toFixed(2)}</span></div>
-          <div className="summary-total"><span>Estimated total</span><span>${(calculateTotal() * 1.2).toFixed(2)}</span></div>
+          {services.filter(service => selectedServices.includes(service.id)).map(service => <div className="summary-line" key={service.id}><span>{service.name}</span><span>{service.id === 'mowing' && selectedSize ? formatRange(selectedSize) : `$${service.price.toFixed(2)}`}</span></div>)}
+          <div className="summary-line"><span>Subtotal {frequency !== 'onetime' && '(after discount)'}</span><span>{formatRange(total)}</span></div>
+          <div className="summary-line"><span>Platform fee (20%)</span><span>{formatRange(total, 0.2)}</span></div>
+          <div className="summary-total"><span>Estimated total</span><span>{formatRange(total, 1.2)}</span></div>
         </div>
         {step === 2 && <button type="button" className="summary-continue" disabled={!selectedServices.length} onClick={handleContinue}><ShoppingCart size={20} />Continue to Schedule</button>}
-        <p className="summary-disclaimer">Preview your services. Online checkout is coming soon.</p>
+        <p className="summary-disclaimer">Mowing prices are estimated ranges. XL may exceed the displayed upper amount. Online checkout is coming soon.</p>
         <div className="summary-benefits"><div><Calendar /><span><strong>Easy Scheduling</strong>Choose your preferred time.</span></div><div><MapPin /><span><strong>Local Lawn Care</strong>Services for your outdoor space.</span></div><div><Leaf /><span><strong>A Healthier Lawn</strong>Care through every season.</span></div></div>
       </aside>
     </div>
