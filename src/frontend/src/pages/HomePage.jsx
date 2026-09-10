@@ -17,7 +17,7 @@ const features = [
 ]
 
 function HomePage() {
-  const heroVideoUrl = import.meta.env.VITE_HERO_VIDEO_URL
+  const heroVideoUrl = import.meta.env.VITE_HERO_VIDEO_URL || '/lawn-pro-hero.mp4'
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-lawn-50 to-white">
