@@ -17,6 +17,8 @@ const features = [
 ]
 
 function HomePage() {
+  const heroVideoUrl = import.meta.env.VITE_HERO_VIDEO_URL
+
   return (
     <div className="min-h-screen bg-gradient-to-b from-lawn-50 to-white">
       {/* Navigation */}
@@ -44,7 +46,21 @@ function HomePage() {
 
       {/* Hero Section */}
       <section className="lawn-hero" aria-labelledby="hero-title">
-        <img className="lawn-hero-photo" src="/lawn-pro-hero.png" alt="Lawn care professional mowing a sunny suburban yard with a family outside their home" fetchPriority="high" />
+        {heroVideoUrl ? (
+          <video
+            className="lawn-hero-photo"
+            autoPlay
+            muted
+            loop
+            playsInline
+            poster="/lawn-pro-hero.png"
+            aria-hidden="true"
+          >
+            <source src={heroVideoUrl} type="video/mp4" />
+          </video>
+        ) : (
+          <img className="lawn-hero-photo" src="/lawn-pro-hero.png" alt="Lawn care professional mowing a sunny suburban yard with a family outside their home" fetchPriority="high" />
+        )}
         <div className="lawn-hero-shade" />
         <div className="lawn-hero-inner">
           <div className="lawn-hero-copy">
