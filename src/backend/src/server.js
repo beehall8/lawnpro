@@ -13,7 +13,21 @@ const app = express()
 const PORT = process.env.PORT || 5000
 
 // Middleware
-app.use(cors())
+const allowedOrigins = (process.env.CORS_ORIGIN || '')
+  .split(',')
+  .map(origin => origin.trim())
+  .filter(Boolean)
+
+app.use(cors({
+  origin(origin, callback) {
+    if (!origin || allowedOrigins.length === 0 || allowedOrigins.includes(origin)) {
+      return callback(null, true)
+    }
+    const error = new Error('Origin not allowed')
+    error.status = 403
+    callback(error)
+  },
+}))
 app.use(express.json())
 app.use(express.urlencoded({ extended: true }))
 

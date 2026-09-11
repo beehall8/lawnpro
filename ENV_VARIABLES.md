@@ -23,6 +23,9 @@ CORS_ORIGIN=http://localhost:5173       # Frontend URL (comma-separated for mult
 # Railway: Auto-injected as reference from Postgres addon
 DATABASE_URL=postgresql://user:password@host:5432/lawnpro
 
+# Protects /admin/vendors API requests. Use a long, unique passcode.
+VENDOR_ADMIN_KEY=<generate-with-openssl-rand-hex-32>
+
 # ==============================
 # Authentication
 # ==============================

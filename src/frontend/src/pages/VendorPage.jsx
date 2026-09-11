@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { AlertCircle, BadgeCheck, Briefcase, CalendarCheck, CheckCircle2, DollarSign, Loader2, MapPin, ShieldCheck, Sprout } from 'lucide-react'
+import { apiBaseUrl, apiUrl } from '../utils/api'
 
 const services = ['Mowing', 'Trimming', 'Edging', 'Leaf removal', 'Fertilizing', 'Weed control']
 
@@ -9,6 +10,8 @@ const initialApplication = {
   business: '',
   email: '',
   phone: '',
+  password: '',
+  confirmPassword: '',
   zip: '',
   experience: '',
   availability: '',
@@ -18,8 +21,7 @@ const initialApplication = {
   services: [],
 }
 
-const applicationEndpoint = import.meta.env.VITE_VENDOR_APPLICATION_ENDPOINT
-  || 'https://formsubmit.co/ajax/support@lawnproatl.com'
+const emailEndpoint = 'https://formsubmit.co/ajax/support@lawnproatl.com'
 
 function VendorPage() {
   const [application, setApplication] = useState(initialApplication)
@@ -47,6 +49,10 @@ function VendorPage() {
       setSubmission({ status: 'error', message: 'Select at least one service you offer.' })
       return
     }
+    if (apiBaseUrl && application.password !== application.confirmPassword) {
+      setSubmission({ status: 'error', message: 'The vendor sign-in passwords do not match.' })
+      return
+    }
 
     setSubmission({ status: 'sending', message: '' })
 
@@ -67,14 +73,30 @@ function VendorPage() {
     formData.append('Notes', application.notes.trim() || 'None')
 
     try {
-      const response = await fetch(applicationEndpoint, {
+      let storedInQueue = false
+
+      if (apiBaseUrl) {
+        const queueResponse = await fetch(apiUrl('/api/v1/vendors/applications'), {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(application),
+        })
+        const queueResult = await queueResponse.json().catch(() => null)
+
+        if (!queueResponse.ok || queueResult?.success === false) {
+          throw new Error(queueResult?.error || 'The application could not be saved for review.')
+        }
+        storedInQueue = true
+      }
+
+      const response = await fetch(emailEndpoint, {
         method: 'POST',
         headers: { Accept: 'application/json' },
         body: formData,
       })
       const result = await response.json().catch(() => null)
 
-      if (!response.ok || result?.success === false || result?.success === 'false') {
+      if ((!response.ok || result?.success === false || result?.success === 'false') && !storedInQueue) {
         throw new Error(result?.message || 'The application could not be submitted.')
       }
 
@@ -161,6 +183,8 @@ function VendorPage() {
                 <label className="block text-sm font-semibold text-gray-700">Primary ZIP code<input required inputMode="numeric" pattern="[0-9]{5}" value={application.zip} onChange={event => updateField('zip', event.target.value.replace(/\D/g, '').slice(0, 5))} className="mt-2 w-full rounded-lg border border-gray-300 px-4 py-3 font-normal focus:border-lawn-600 focus:outline-none focus:ring-2 focus:ring-lawn-100" placeholder="30083" /></label>
                 <label className="block text-sm font-semibold text-gray-700">Years of experience<select value={application.experience} onChange={event => updateField('experience', event.target.value)} className="mt-2 w-full rounded-lg border border-gray-300 bg-white px-4 py-3 font-normal focus:border-lawn-600 focus:outline-none focus:ring-2 focus:ring-lawn-100"><option value="">Select one</option><option>Less than 1 year</option><option>1–2 years</option><option>3–5 years</option><option>6+ years</option></select></label>
               </div>
+
+              {apiBaseUrl && <div className="grid gap-5 rounded-2xl border border-lawn-100 bg-lawn-50 p-5 sm:grid-cols-2"><div className="sm:col-span-2"><h3 className="font-bold text-lawn-800">Create your vendor sign-in</h3><p className="mt-1 text-sm text-gray-600">You can sign in to the vendor portal after your application is approved.</p></div><label className="block text-sm font-semibold text-gray-700">Password<input required type="password" minLength="8" value={application.password} onChange={event => updateField('password', event.target.value)} className="mt-2 w-full rounded-lg border border-gray-300 bg-white px-4 py-3 font-normal focus:border-lawn-600 focus:outline-none focus:ring-2 focus:ring-lawn-100" autoComplete="new-password" /></label><label className="block text-sm font-semibold text-gray-700">Confirm password<input required type="password" minLength="8" value={application.confirmPassword} onChange={event => updateField('confirmPassword', event.target.value)} className="mt-2 w-full rounded-lg border border-gray-300 bg-white px-4 py-3 font-normal focus:border-lawn-600 focus:outline-none focus:ring-2 focus:ring-lawn-100" autoComplete="new-password" /></label>{application.confirmPassword && application.password !== application.confirmPassword && <p className="text-sm font-semibold text-red-700 sm:col-span-2">Passwords do not match.</p>}</div>}
 
               <fieldset><legend className="text-sm font-semibold text-gray-700">Services you offer <span className="text-red-600" aria-hidden="true">*</span></legend><div className="mt-3 grid sm:grid-cols-2 gap-3">{services.map(service => <label key={service} className="flex items-center gap-3 rounded-lg border border-gray-200 px-4 py-3 hover:border-lawn-400"><input type="checkbox" checked={application.services.includes(service)} onChange={() => toggleService(service)} className="h-4 w-4 accent-lawn-600" />{service}</label>)}</div></fieldset>
 

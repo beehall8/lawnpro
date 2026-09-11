@@ -4,6 +4,9 @@ import BookingPage from './pages/BookingPage'
 import VendorDashboard from './pages/VendorDashboard'
 import ServiceCompletion from './pages/ServiceCompletion'
 import VendorPage from './pages/VendorPage'
+import AdminVendorApplications from './pages/AdminVendorApplications'
+import VendorLogin from './pages/VendorLogin'
+import ProtectedVendorRoute from './components/ProtectedVendorRoute'
 
 function App() {
   return (
@@ -12,8 +15,12 @@ function App() {
         <Route path="/" element={<HomePage />} />
         <Route path="/book" element={<BookingPage />} />
         <Route path="/vendors" element={<VendorPage />} />
-        <Route path="/vendor/dashboard" element={<VendorDashboard />} />
-        <Route path="/vendor/complete/:jobId" element={<ServiceCompletion />} />
+        <Route path="/vendor/login" element={<VendorLogin />} />
+        <Route element={<ProtectedVendorRoute />}>
+          <Route path="/vendor/dashboard" element={<VendorDashboard />} />
+          <Route path="/vendor/complete/:jobId" element={<ServiceCompletion />} />
+        </Route>
+        <Route path="/admin/vendors" element={<AdminVendorApplications />} />
       </Routes>
     </div>
   )

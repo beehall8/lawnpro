@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { MapPin, DollarSign, Star, Clock, CheckCircle, XCircle, Navigation } from 'lucide-react'
 
 const sampleJobs = [
@@ -50,6 +50,8 @@ const sampleJobs = [
 ]
 
 function VendorDashboard() {
+  const navigate = useNavigate()
+  const vendor = JSON.parse(sessionStorage.getItem('lawnProVendorProfile') || '{}')
   const [viewMode, setViewMode] = useState('list') // 'list' or 'map'
   const [filter, setFilter] = useState('all')
   
@@ -62,6 +64,12 @@ function VendorDashboard() {
   const weeklyEarnings = sampleJobs.reduce((sum, job) => sum + job.payout, 0)
   const jobsCompleted = 12
   const avgRating = 4.8
+
+  const signOut = () => {
+    sessionStorage.removeItem('lawnProVendorToken')
+    sessionStorage.removeItem('lawnProVendorProfile')
+    navigate('/vendor/login', { replace: true })
+  }
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -76,9 +84,9 @@ function VendorDashboard() {
             <div className="flex items-center space-x-4">
               <div className="text-right hidden sm:block">
                 <div className="text-sm opacity-90">Welcome back,</div>
-                <div className="font-semibold">Green Scapes LLC</div>
+                <div className="font-semibold">{vendor.businessName || vendor.name || 'Lawn Pro Vendor'}</div>
               </div>
-              <button className="bg-white text-lawn-700 px-4 py-2 rounded-lg font-medium hover:bg-gray-100">
+              <button onClick={signOut} className="bg-white text-lawn-700 px-4 py-2 rounded-lg font-medium hover:bg-gray-100">
                 Logout
               </button>
             </div>
