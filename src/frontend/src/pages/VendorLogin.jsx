@@ -1,35 +1,47 @@
-import { useState } from 'react'
-import { Link, Navigate, useNavigate } from 'react-router-dom'
+import { useEffect, useState } from 'react'
+import { Link, useNavigate } from 'react-router-dom'
 import { AlertCircle, Loader2, Sprout } from 'lucide-react'
-import { apiBaseUrl, apiUrl } from '../utils/api'
+import { signInWithEmailAndPassword, signOut } from 'firebase/auth'
+import { doc, getDoc } from 'firebase/firestore'
+import { auth, db, isFirebaseConfigured } from '../firebase'
+
+const friendlyError = error => {
+  if (error?.code === 'auth/invalid-credential') return 'Invalid email or password.'
+  if (error?.code === 'auth/too-many-requests') return 'Too many sign-in attempts. Please wait and try again.'
+  return error?.message || 'Sign-in failed.'
+}
 
 function VendorLogin() {
   const navigate = useNavigate()
   const [credentials, setCredentials] = useState({ email: '', password: '' })
   const [state, setState] = useState({ status: 'idle', message: '' })
 
-  if (sessionStorage.getItem('lawnProVendorToken')) return <Navigate to="/vendor/dashboard" replace />
+  useEffect(() => {
+    if (!isFirebaseConfigured) setState({ status: 'error', message: 'Vendor sign-in is not connected yet.' })
+  }, [])
 
-  const submit = async (event) => {
+  const submit = async event => {
     event.preventDefault()
-    if (!apiBaseUrl) {
-      setState({ status: 'error', message: 'Vendor sign-in is not connected yet.' })
-      return
-    }
+    if (!isFirebaseConfigured) return
     setState({ status: 'loading', message: '' })
+
     try {
-      const response = await fetch(apiUrl('/api/v1/vendors/login'), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(credentials),
-      })
-      const result = await response.json().catch(() => null)
-      if (!response.ok) throw new Error(result?.error || 'Sign-in failed.')
-      sessionStorage.setItem('lawnProVendorToken', result.data.accessToken)
-      sessionStorage.setItem('lawnProVendorProfile', JSON.stringify(result.data.vendor))
+      const credential = await signInWithEmailAndPassword(auth, credentials.email.trim().toLowerCase(), credentials.password)
+      const snapshot = await getDoc(doc(db, 'vendorApplications', credential.user.uid))
+      const vendor = snapshot.exists() ? snapshot.data() : null
+
+      if (!vendor || vendor.status !== 'APPROVED') {
+        await signOut(auth)
+        const message = vendor?.status === 'PENDING'
+          ? 'Your application is still pending review.'
+          : 'Your vendor account is not approved.'
+        throw new Error(message)
+      }
+
+      sessionStorage.setItem('lawnProVendorProfile', JSON.stringify({ id: snapshot.id, ...vendor }))
       navigate('/vendor/dashboard', { replace: true })
     } catch (error) {
-      setState({ status: 'error', message: error.message })
+      setState({ status: 'error', message: friendlyError(error) })
     }
   }
 
@@ -43,7 +55,7 @@ function VendorLogin() {
         <form onSubmit={submit} className="mt-7 space-y-5">
           <label className="block text-sm font-semibold text-gray-700">Email address<input required type="email" value={credentials.email} onChange={event => setCredentials(current => ({ ...current, email: event.target.value }))} className="mt-2 w-full rounded-lg border border-gray-300 px-4 py-3 font-normal focus:border-lawn-600 focus:outline-none focus:ring-2 focus:ring-lawn-100" autoComplete="email" /></label>
           <label className="block text-sm font-semibold text-gray-700">Password<input required type="password" value={credentials.password} onChange={event => setCredentials(current => ({ ...current, password: event.target.value }))} className="mt-2 w-full rounded-lg border border-gray-300 px-4 py-3 font-normal focus:border-lawn-600 focus:outline-none focus:ring-2 focus:ring-lawn-100" autoComplete="current-password" /></label>
-          <button disabled={state.status === 'loading'} className="btn-primary flex w-full items-center justify-center gap-2 disabled:opacity-60" type="submit">{state.status === 'loading' && <Loader2 className="h-5 w-5 animate-spin" />}Sign in</button>
+          <button disabled={state.status === 'loading' || !isFirebaseConfigured} className="btn-primary flex w-full items-center justify-center gap-2 disabled:opacity-60" type="submit">{state.status === 'loading' && <Loader2 className="h-5 w-5 animate-spin" />}Sign in</button>
         </form>
         <p className="mt-6 text-center text-sm text-gray-600">Not approved yet? <Link to="/vendors" className="font-semibold text-lawn-700">Apply to become a Lawn Pro</Link></p>
       </section>

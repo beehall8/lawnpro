@@ -1,114 +1,155 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { AlertCircle, BadgeCheck, Check, Clock3, Loader2, LogOut, Mail, MapPin, Phone, Sprout, X } from 'lucide-react'
-import { apiBaseUrl, apiUrl } from '../utils/api'
+import { createUserWithEmailAndPassword, onAuthStateChanged, reload, sendEmailVerification, signInWithEmailAndPassword, signOut } from 'firebase/auth'
+import { collection, doc, onSnapshot, orderBy, query, serverTimestamp, updateDoc } from 'firebase/firestore'
+import { auth, db, isFirebaseConfigured } from '../firebase'
 
+const ADMIN_EMAIL = 'cliquebots@gmail.com'
 const filters = ['PENDING', 'APPROVED', 'REJECTED', 'ALL']
-
 const statusStyles = {
   PENDING: 'border-amber-200 bg-amber-50 text-amber-800',
   APPROVED: 'border-lawn-200 bg-lawn-50 text-lawn-800',
   REJECTED: 'border-red-200 bg-red-50 text-red-800',
 }
 
+const authMessage = error => {
+  if (error?.code === 'auth/email-already-in-use') return 'This admin account already exists. Choose Sign in instead.'
+  if (error?.code === 'auth/invalid-credential') return 'Invalid email or password.'
+  if (error?.code === 'auth/weak-password') return 'Choose a password with at least 8 characters.'
+  if (error?.code === 'permission-denied') return 'This account does not have permission to review applications.'
+  return error?.message || 'The request could not be completed.'
+}
+
+const formatDate = timestamp => {
+  const date = timestamp?.toDate?.() || (timestamp ? new Date(timestamp) : null)
+  return date && !Number.isNaN(date.getTime()) ? date.toLocaleString() : 'Just now'
+}
+
 function AdminVendorApplications() {
-  const [adminKey, setAdminKey] = useState(() => sessionStorage.getItem('lawnProVendorAdminKey') || '')
-  const [draftKey, setDraftKey] = useState('')
+  const [user, setUser] = useState(null)
+  const [authReady, setAuthReady] = useState(false)
+  const [mode, setMode] = useState('signin')
+  const [credentials, setCredentials] = useState({ email: ADMIN_EMAIL, password: '' })
   const [filter, setFilter] = useState('PENDING')
-  const [applications, setApplications] = useState([])
-  const [counts, setCounts] = useState({ PENDING: 0, APPROVED: 0, REJECTED: 0 })
+  const [allApplications, setAllApplications] = useState([])
   const [state, setState] = useState({ status: 'idle', message: '' })
   const [updatingId, setUpdatingId] = useState('')
 
-  const loadApplications = useCallback(async () => {
-    if (!adminKey || !apiBaseUrl) return
-    setState({ status: 'loading', message: '' })
-
-    try {
-      const query = filter === 'ALL' ? '' : `?status=${filter}`
-      const response = await fetch(apiUrl(`/api/v1/vendors/applications${query}`), {
-        headers: { 'x-admin-key': adminKey },
-      })
-      const result = await response.json().catch(() => null)
-
-      if (!response.ok) throw new Error(result?.error || 'Applications could not be loaded.')
-
-      setApplications(result.data || [])
-      setCounts(result.counts || { PENDING: 0, APPROVED: 0, REJECTED: 0 })
-      setState({ status: 'ready', message: '' })
-    } catch (error) {
-      if (/passcode/i.test(error.message)) {
-        sessionStorage.removeItem('lawnProVendorAdminKey')
-        setAdminKey('')
-      }
-      setState({ status: 'error', message: error.message })
-    }
-  }, [adminKey, filter])
+  const isVerifiedAdmin = user?.email?.toLowerCase() === ADMIN_EMAIL && user.emailVerified
 
   useEffect(() => {
-    loadApplications()
-  }, [loadApplications])
+    if (!isFirebaseConfigured) {
+      setAuthReady(true)
+      setState({ status: 'error', message: 'The Firebase connection is not configured yet.' })
+      return undefined
+    }
+    return onAuthStateChanged(auth, currentUser => {
+      setUser(currentUser)
+      setAuthReady(true)
+      if (currentUser && !currentUser.emailVerified) {
+        setState({ status: 'verify', message: 'Verify the admin email before opening the application queue.' })
+      }
+    })
+  }, [])
 
-  const signIn = (event) => {
+  useEffect(() => {
+    if (!isVerifiedAdmin) return undefined
+    setState({ status: 'loading', message: '' })
+    const applicationsQuery = query(collection(db, 'vendorApplications'), orderBy('createdAt', 'desc'))
+    return onSnapshot(applicationsQuery, snapshot => {
+      setAllApplications(snapshot.docs.map(item => ({ id: item.id, ...item.data() })))
+      setState({ status: 'ready', message: '' })
+    }, error => setState({ status: 'error', message: authMessage(error) }))
+  }, [isVerifiedAdmin])
+
+  const applications = useMemo(
+    () => filter === 'ALL' ? allApplications : allApplications.filter(item => item.status === filter),
+    [allApplications, filter],
+  )
+
+  const counts = useMemo(() => allApplications.reduce((result, item) => {
+    if (result[item.status] !== undefined) result[item.status] += 1
+    return result
+  }, { PENDING: 0, APPROVED: 0, REJECTED: 0 }), [allApplications])
+
+  const submitCredentials = async event => {
     event.preventDefault()
-    const value = draftKey.trim()
-    if (!value) return
-    sessionStorage.setItem('lawnProVendorAdminKey', value)
-    setAdminKey(value)
-    setDraftKey('')
+    if (!isFirebaseConfigured) return
+    setState({ status: 'loading', message: '' })
+    const email = credentials.email.trim().toLowerCase()
+
+    if (email !== ADMIN_EMAIL) {
+      setState({ status: 'error', message: `Use the Firebase project owner email: ${ADMIN_EMAIL}` })
+      return
+    }
+
+    try {
+      if (mode === 'create') {
+        const result = await createUserWithEmailAndPassword(auth, email, credentials.password)
+        await sendEmailVerification(result.user, { url: 'https://lawnproatl.com/admin/vendors' })
+        setUser(result.user)
+        setState({ status: 'verify', message: `Verification sent to ${ADMIN_EMAIL}. Open the email, verify the account, then return here.` })
+      } else {
+        await signInWithEmailAndPassword(auth, email, credentials.password)
+      }
+    } catch (error) {
+      setState({ status: 'error', message: authMessage(error) })
+    }
   }
 
-  const signOut = () => {
-    sessionStorage.removeItem('lawnProVendorAdminKey')
-    setAdminKey('')
-    setApplications([])
+  const checkVerification = async () => {
+    if (!auth.currentUser) return
+    setState({ status: 'loading', message: '' })
+    await reload(auth.currentUser)
+    await auth.currentUser.getIdToken(true)
+    setUser({ email: auth.currentUser.email, emailVerified: auth.currentUser.emailVerified })
+    setState(auth.currentUser.emailVerified
+      ? { status: 'ready', message: '' }
+      : { status: 'verify', message: 'The account is not verified yet. Open the verification email and try again.' })
+  }
+
+  const logOut = async () => {
+    await signOut(auth)
+    setAllApplications([])
     setState({ status: 'idle', message: '' })
   }
 
   const review = async (id, status) => {
     setUpdatingId(id)
-    setState(current => ({ ...current, message: '' }))
     try {
-      const response = await fetch(apiUrl(`/api/v1/vendors/applications/${id}`), {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json', 'x-admin-key': adminKey },
-        body: JSON.stringify({ status }),
-      })
-      const result = await response.json().catch(() => null)
-      if (!response.ok) throw new Error(result?.error || 'The application could not be updated.')
-      await loadApplications()
+      await updateDoc(doc(db, 'vendorApplications', id), { status, reviewedAt: serverTimestamp() })
     } catch (error) {
-      setState({ status: 'error', message: error.message })
+      setState({ status: 'error', message: authMessage(error) })
     } finally {
       setUpdatingId('')
     }
   }
 
-  if (!apiBaseUrl) {
-    return (
-      <main className="min-h-screen bg-gray-50 px-4 py-16">
-        <section className="mx-auto max-w-xl rounded-3xl border border-amber-200 bg-white p-8 shadow-lg">
-          <AlertCircle className="h-10 w-10 text-amber-600" />
-          <h1 className="mt-5 text-3xl font-bold text-gray-900">Admin queue needs its database connection</h1>
-          <p className="mt-3 text-gray-600">The review page is ready, but the live site still needs its backend URL before applications can appear here.</p>
-          <Link to="/" className="mt-7 inline-flex font-semibold text-lawn-700 hover:text-lawn-800">Return to Lawn Pro</Link>
-        </section>
-      </main>
-    )
-  }
+  if (!authReady) return <div className="flex min-h-screen items-center justify-center gap-3 bg-gray-50 text-gray-600"><Loader2 className="animate-spin" /> Loading secure admin access…</div>
 
-  if (!adminKey) {
+  if (!isVerifiedAdmin) {
     return (
       <main className="grid min-h-screen place-items-center bg-gradient-to-b from-lawn-50 to-white px-4 py-12">
         <section className="w-full max-w-md rounded-3xl border border-lawn-100 bg-white p-8 shadow-xl">
           <div className="flex items-center gap-2 text-xl font-bold text-lawn-700"><Sprout /> Lawn Pro</div>
           <h1 className="mt-8 text-3xl font-bold text-gray-900">Vendor applications</h1>
-          <p className="mt-2 text-gray-600">Enter the private admin passcode to review applications.</p>
-          {state.status === 'error' && <div role="alert" className="mt-5 rounded-xl border border-red-200 bg-red-50 p-4 text-red-800">{state.message}</div>}
-          <form onSubmit={signIn} className="mt-7 space-y-4">
-            <label className="block text-sm font-semibold text-gray-700">Admin passcode<input type="password" required value={draftKey} onChange={event => setDraftKey(event.target.value)} className="mt-2 w-full rounded-lg border border-gray-300 px-4 py-3 font-normal focus:border-lawn-600 focus:outline-none focus:ring-2 focus:ring-lawn-100" autoComplete="current-password" /></label>
-            <button className="btn-primary w-full" type="submit">Open application queue</button>
-          </form>
+          <p className="mt-2 text-gray-600">Sign in with the verified Firebase project owner account to review applications.</p>
+          {state.message && <div role={state.status === 'error' ? 'alert' : 'status'} className={`mt-5 rounded-xl border p-4 ${state.status === 'error' ? 'border-red-200 bg-red-50 text-red-800' : 'border-amber-200 bg-amber-50 text-amber-900'}`}>{state.message}</div>}
+
+          {user && !user.emailVerified ? (
+            <div className="mt-7 space-y-3">
+              <button type="button" onClick={checkVerification} className="btn-primary w-full">I verified my email</button>
+              <button type="button" onClick={logOut} className="w-full rounded-lg border border-gray-300 px-4 py-3 font-semibold text-gray-700">Use another account</button>
+            </div>
+          ) : (
+            <form onSubmit={submitCredentials} className="mt-7 space-y-4">
+              <label className="block text-sm font-semibold text-gray-700">Admin email<input type="email" required value={credentials.email} onChange={event => setCredentials(current => ({ ...current, email: event.target.value }))} className="mt-2 w-full rounded-lg border border-gray-300 px-4 py-3 font-normal focus:border-lawn-600 focus:outline-none focus:ring-2 focus:ring-lawn-100" autoComplete="email" /></label>
+              <label className="block text-sm font-semibold text-gray-700">Password<input type="password" minLength="8" required value={credentials.password} onChange={event => setCredentials(current => ({ ...current, password: event.target.value }))} className="mt-2 w-full rounded-lg border border-gray-300 px-4 py-3 font-normal focus:border-lawn-600 focus:outline-none focus:ring-2 focus:ring-lawn-100" autoComplete={mode === 'create' ? 'new-password' : 'current-password'} /></label>
+              <button disabled={state.status === 'loading' || !isFirebaseConfigured} className="btn-primary flex w-full items-center justify-center gap-2 disabled:opacity-60" type="submit">{state.status === 'loading' && <Loader2 className="h-5 w-5 animate-spin" />}{mode === 'create' ? 'Create admin account' : 'Sign in'}</button>
+              <button type="button" onClick={() => { setMode(current => current === 'signin' ? 'create' : 'signin'); setState({ status: 'idle', message: '' }) }} className="w-full text-sm font-semibold text-lawn-700">{mode === 'signin' ? 'First time? Create the admin account' : 'Already created it? Sign in'}</button>
+            </form>
+          )}
         </section>
       </main>
     )
@@ -119,7 +160,7 @@ function AdminVendorApplications() {
       <header className="border-b border-gray-200 bg-white">
         <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-4 sm:px-6 lg:px-8">
           <Link to="/" className="flex items-center gap-2 text-xl font-bold text-lawn-700"><Sprout /> Lawn Pro Admin</Link>
-          <button type="button" onClick={signOut} className="inline-flex items-center gap-2 rounded-lg border border-gray-300 px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50"><LogOut size={17} /> Sign out</button>
+          <button type="button" onClick={logOut} className="inline-flex items-center gap-2 rounded-lg border border-gray-300 px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50"><LogOut size={17} /> Sign out</button>
         </div>
       </header>
 
@@ -142,7 +183,7 @@ function AdminVendorApplications() {
             <article key={application.id} className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
               <div className="flex flex-wrap items-start justify-between gap-4">
                 <div><div className="flex flex-wrap items-center gap-3"><h2 className="text-xl font-bold">{application.name}</h2><span className={`rounded-full border px-3 py-1 text-xs font-bold ${statusStyles[application.status]}`}>{application.status}</span></div><p className="mt-1 text-gray-600">{application.businessName || 'Independent provider'}</p></div>
-                <time className="text-sm text-gray-500" dateTime={application.createdAt}>{new Date(application.createdAt).toLocaleString()}</time>
+                <time className="text-sm text-gray-500">{formatDate(application.createdAt)}</time>
               </div>
 
               <div className="mt-5 grid gap-3 text-sm text-gray-700 sm:grid-cols-3">

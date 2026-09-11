@@ -1,7 +1,9 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { AlertCircle, BadgeCheck, Briefcase, CalendarCheck, CheckCircle2, DollarSign, Loader2, MapPin, ShieldCheck, Sprout } from 'lucide-react'
-import { apiBaseUrl, apiUrl } from '../utils/api'
+import { createUserWithEmailAndPassword, deleteUser, signOut, updateProfile } from 'firebase/auth'
+import { doc, serverTimestamp, setDoc } from 'firebase/firestore'
+import { auth, db, isFirebaseConfigured } from '../firebase'
 
 const services = ['Mowing', 'Trimming', 'Edging', 'Leaf removal', 'Fertilizing', 'Weed control']
 
@@ -22,6 +24,14 @@ const initialApplication = {
 }
 
 const emailEndpoint = 'https://formsubmit.co/ajax/support@lawnproatl.com'
+
+const friendlyError = error => {
+  if (error?.code === 'auth/email-already-in-use') return 'An application account already exists for this email. Sign in to check its status.'
+  if (error?.code === 'auth/weak-password') return 'Choose a password with at least 8 characters.'
+  if (error?.code === 'auth/invalid-email') return 'Enter a valid email address.'
+  if (error?.code === 'permission-denied') return 'The application could not be saved securely. Please contact support.'
+  return error?.message || 'We could not submit your application. Please try again.'
+}
 
 function VendorPage() {
   const [application, setApplication] = useState(initialApplication)
@@ -49,8 +59,12 @@ function VendorPage() {
       setSubmission({ status: 'error', message: 'Select at least one service you offer.' })
       return
     }
-    if (apiBaseUrl && application.password !== application.confirmPassword) {
+    if (application.password !== application.confirmPassword) {
       setSubmission({ status: 'error', message: 'The vendor sign-in passwords do not match.' })
+      return
+    }
+    if (!isFirebaseConfigured) {
+      setSubmission({ status: 'error', message: 'The application system is being connected. Please try again shortly.' })
       return
     }
 
@@ -73,31 +87,50 @@ function VendorPage() {
     formData.append('Notes', application.notes.trim() || 'None')
 
     try {
-      let storedInQueue = false
+      const credential = await createUserWithEmailAndPassword(
+        auth,
+        application.email.trim().toLowerCase(),
+        application.password,
+      )
 
-      if (apiBaseUrl) {
-        const queueResponse = await fetch(apiUrl('/api/v1/vendors/applications'), {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(application),
+      try {
+        await updateProfile(credential.user, { displayName: application.name.trim() })
+        await setDoc(doc(db, 'vendorApplications', credential.user.uid), {
+          userId: credential.user.uid,
+          name: application.name.trim(),
+          businessName: application.business.trim() || null,
+          email: application.email.trim().toLowerCase(),
+          phone: application.phone.trim(),
+          zipCode: application.zip,
+          experience: application.experience || null,
+          services: application.services,
+          availability: application.availability.trim() || null,
+          notes: application.notes.trim() || null,
+          insured: application.insured,
+          agreed: application.agreed,
+          status: 'PENDING',
+          createdAt: serverTimestamp(),
+          reviewedAt: null,
         })
-        const queueResult = await queueResponse.json().catch(() => null)
-
-        if (!queueResponse.ok || queueResult?.success === false) {
-          throw new Error(queueResult?.error || 'The application could not be saved for review.')
-        }
-        storedInQueue = true
+      } catch (error) {
+        await deleteUser(credential.user).catch(() => undefined)
+        throw error
       }
 
-      const response = await fetch(emailEndpoint, {
-        method: 'POST',
-        headers: { Accept: 'application/json' },
-        body: formData,
-      })
-      const result = await response.json().catch(() => null)
+      await signOut(auth)
 
-      if ((!response.ok || result?.success === false || result?.success === 'false') && !storedInQueue) {
-        throw new Error(result?.message || 'The application could not be submitted.')
+      try {
+        const response = await fetch(emailEndpoint, {
+          method: 'POST',
+          headers: { Accept: 'application/json' },
+          body: formData,
+        })
+        const result = await response.json().catch(() => null)
+        if (!response.ok || result?.success === false || result?.success === 'false') {
+          console.warn('Application saved, but the notification email was not delivered.', result)
+        }
+      } catch (notificationError) {
+        console.warn('Application saved, but the notification email was not delivered.', notificationError)
       }
 
       setApplication(initialApplication)
@@ -108,7 +141,7 @@ function VendorPage() {
     } catch (error) {
       setSubmission({
         status: 'error',
-        message: error.message || 'We could not submit your application. Please try again.',
+        message: friendlyError(error),
       })
     }
   }
@@ -184,7 +217,7 @@ function VendorPage() {
                 <label className="block text-sm font-semibold text-gray-700">Years of experience<select value={application.experience} onChange={event => updateField('experience', event.target.value)} className="mt-2 w-full rounded-lg border border-gray-300 bg-white px-4 py-3 font-normal focus:border-lawn-600 focus:outline-none focus:ring-2 focus:ring-lawn-100"><option value="">Select one</option><option>Less than 1 year</option><option>1–2 years</option><option>3–5 years</option><option>6+ years</option></select></label>
               </div>
 
-              {apiBaseUrl && <div className="grid gap-5 rounded-2xl border border-lawn-100 bg-lawn-50 p-5 sm:grid-cols-2"><div className="sm:col-span-2"><h3 className="font-bold text-lawn-800">Create your vendor sign-in</h3><p className="mt-1 text-sm text-gray-600">You can sign in to the vendor portal after your application is approved.</p></div><label className="block text-sm font-semibold text-gray-700">Password<input required type="password" minLength="8" value={application.password} onChange={event => updateField('password', event.target.value)} className="mt-2 w-full rounded-lg border border-gray-300 bg-white px-4 py-3 font-normal focus:border-lawn-600 focus:outline-none focus:ring-2 focus:ring-lawn-100" autoComplete="new-password" /></label><label className="block text-sm font-semibold text-gray-700">Confirm password<input required type="password" minLength="8" value={application.confirmPassword} onChange={event => updateField('confirmPassword', event.target.value)} className="mt-2 w-full rounded-lg border border-gray-300 bg-white px-4 py-3 font-normal focus:border-lawn-600 focus:outline-none focus:ring-2 focus:ring-lawn-100" autoComplete="new-password" /></label>{application.confirmPassword && application.password !== application.confirmPassword && <p className="text-sm font-semibold text-red-700 sm:col-span-2">Passwords do not match.</p>}</div>}
+              <div className="grid gap-5 rounded-2xl border border-lawn-100 bg-lawn-50 p-5 sm:grid-cols-2"><div className="sm:col-span-2"><h3 className="font-bold text-lawn-800">Create your vendor sign-in</h3><p className="mt-1 text-sm text-gray-600">You can sign in to the vendor portal after your application is approved.</p></div><label className="block text-sm font-semibold text-gray-700">Password<input required type="password" minLength="8" value={application.password} onChange={event => updateField('password', event.target.value)} className="mt-2 w-full rounded-lg border border-gray-300 bg-white px-4 py-3 font-normal focus:border-lawn-600 focus:outline-none focus:ring-2 focus:ring-lawn-100" autoComplete="new-password" /></label><label className="block text-sm font-semibold text-gray-700">Confirm password<input required type="password" minLength="8" value={application.confirmPassword} onChange={event => updateField('confirmPassword', event.target.value)} className="mt-2 w-full rounded-lg border border-gray-300 bg-white px-4 py-3 font-normal focus:border-lawn-600 focus:outline-none focus:ring-2 focus:ring-lawn-100" autoComplete="new-password" /></label>{application.confirmPassword && application.password !== application.confirmPassword && <p className="text-sm font-semibold text-red-700 sm:col-span-2">Passwords do not match.</p>}</div>
 
               <fieldset><legend className="text-sm font-semibold text-gray-700">Services you offer <span className="text-red-600" aria-hidden="true">*</span></legend><div className="mt-3 grid sm:grid-cols-2 gap-3">{services.map(service => <label key={service} className="flex items-center gap-3 rounded-lg border border-gray-200 px-4 py-3 hover:border-lawn-400"><input type="checkbox" checked={application.services.includes(service)} onChange={() => toggleService(service)} className="h-4 w-4 accent-lawn-600" />{service}</label>)}</div></fieldset>
 
@@ -192,7 +225,7 @@ function VendorPage() {
               <label className="block text-sm font-semibold text-gray-700">Anything else we should know? <span className="font-normal text-gray-500">(optional)</span><textarea rows="4" value={application.notes} onChange={event => updateField('notes', event.target.value)} className="mt-2 w-full rounded-lg border border-gray-300 px-4 py-3 font-normal focus:border-lawn-600 focus:outline-none focus:ring-2 focus:ring-lawn-100" placeholder="Equipment, service area, certifications, or other details" /></label>
               <label className="flex gap-3 text-sm text-gray-700"><input type="checkbox" checked={application.insured} onChange={event => updateField('insured', event.target.checked)} className="mt-0.5 h-4 w-4 accent-lawn-600" />I have active business insurance, or I understand proof of insurance may be required before approval.</label>
               <label className="flex gap-3 text-sm text-gray-700"><input required type="checkbox" checked={application.agreed} onChange={event => updateField('agreed', event.target.checked)} className="mt-0.5 h-4 w-4 accent-lawn-600" />I confirm the information in this application is accurate and agree to be contacted about becoming a Lawn Pro provider.</label>
-              <button type="submit" disabled={submission.status === 'sending'} className="btn-primary flex w-full items-center justify-center gap-2 py-3 disabled:cursor-not-allowed disabled:opacity-70">
+              <button type="submit" disabled={submission.status === 'sending' || !isFirebaseConfigured} className="btn-primary flex w-full items-center justify-center gap-2 py-3 disabled:cursor-not-allowed disabled:opacity-70">
                 {submission.status === 'sending' && <Loader2 className="h-5 w-5 animate-spin" aria-hidden="true" />}
                 {submission.status === 'sending' ? 'Submitting application…' : 'Submit application'}
               </button>

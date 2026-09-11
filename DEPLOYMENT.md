@@ -117,7 +117,7 @@ Add the Vercel URL to `CORS_ORIGIN` in Railway env vars, then redeploy backend.
 - [ ] Submit a vendor application and confirm it appears at `/admin/vendors`
 - [ ] Approve the application and confirm the vendor can sign in at `/vendor/login`
 
-See `VENDOR_APPROVAL_SETUP.md` for the complete approval-queue activation steps. A ready-to-use Render Blueprint is included in `render.yaml`.
+See `VENDOR_APPROVAL_SETUP.md` for the Firebase-backed approval queue and first-admin setup.
 
 ---
 

@@ -23,9 +23,6 @@ CORS_ORIGIN=http://localhost:5173       # Frontend URL (comma-separated for mult
 # Railway: Auto-injected as reference from Postgres addon
 DATABASE_URL=postgresql://user:password@host:5432/lawnpro
 
-# Protects /admin/vendors API requests. Use a long, unique passcode.
-VENDOR_ADMIN_KEY=<generate-with-openssl-rand-hex-32>
-
 # ==============================
 # Authentication
 # ==============================
@@ -94,6 +91,16 @@ LOG_LEVEL=info                                       # debug | info | warn | err
 # ==============================
 VITE_API_URL=http://localhost:5000                   # Backend URL
 VITE_API_VERSION=v1                                  # /api/v1/...
+
+# ==============================
+# Firebase vendor applications
+# ==============================
+VITE_FIREBASE_API_KEY=                               # Public Firebase web API key
+VITE_FIREBASE_AUTH_DOMAIN=lawnproatl-85df0.firebaseapp.com
+VITE_FIREBASE_PROJECT_ID=lawnproatl-85df0
+VITE_FIREBASE_STORAGE_BUCKET=
+VITE_FIREBASE_MESSAGING_SENDER_ID=671443673931
+VITE_FIREBASE_APP_ID=
 
 # ==============================
 # Google Maps (Client-side)

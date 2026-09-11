@@ -1,32 +1,37 @@
 import { useEffect, useState } from 'react'
 import { Navigate, Outlet } from 'react-router-dom'
 import { Loader2 } from 'lucide-react'
-import { apiBaseUrl, apiUrl } from '../utils/api'
+import { onAuthStateChanged } from 'firebase/auth'
+import { doc, getDoc } from 'firebase/firestore'
+import { auth, db, isFirebaseConfigured } from '../firebase'
 
 function ProtectedVendorRoute() {
   const [access, setAccess] = useState('checking')
 
   useEffect(() => {
-    const token = sessionStorage.getItem('lawnProVendorToken')
-    if (!token || !apiBaseUrl) {
+    if (!isFirebaseConfigured) {
       setAccess('denied')
-      return
+      return undefined
     }
 
-    fetch(apiUrl('/api/v1/vendors/me'), { headers: { Authorization: `Bearer ${token}` } })
-      .then(response => {
-        if (!response.ok) throw new Error('Unauthorized')
-        return response.json()
-      })
-      .then(result => {
-        sessionStorage.setItem('lawnProVendorProfile', JSON.stringify(result.data))
-        setAccess('approved')
-      })
-      .catch(() => {
-        sessionStorage.removeItem('lawnProVendorToken')
+    return onAuthStateChanged(auth, async user => {
+      if (!user) {
         sessionStorage.removeItem('lawnProVendorProfile')
         setAccess('denied')
-      })
+        return
+      }
+
+      try {
+        const snapshot = await getDoc(doc(db, 'vendorApplications', user.uid))
+        const vendor = snapshot.exists() ? snapshot.data() : null
+        if (!vendor || vendor.status !== 'APPROVED') throw new Error('Vendor access is not active')
+        sessionStorage.setItem('lawnProVendorProfile', JSON.stringify({ id: snapshot.id, ...vendor }))
+        setAccess('approved')
+      } catch {
+        sessionStorage.removeItem('lawnProVendorProfile')
+        setAccess('denied')
+      }
+    })
   }, [])
 
   if (access === 'checking') return <div className="flex min-h-screen items-center justify-center gap-3 bg-gray-50 text-gray-600"><Loader2 className="animate-spin" /> Checking vendor access…</div>

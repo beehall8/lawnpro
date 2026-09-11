@@ -1,34 +1,47 @@
-# Vendor approval setup
+# Firebase vendor approval setup
 
-The application, admin review queue, approval controls, and approved-vendor sign-in are implemented. The existing FormSubmit email delivery remains active as a fallback until the API URL is configured.
+The vendor application queue uses Firebase Authentication and Cloud Firestore in project `lawnproatl-85df0`. Render and PostgreSQL are not required for this workflow.
 
-## Routes
+## Live routes
 
-- Vendor application: `https://lawnproatl.com/vendors`
+- Application: `https://lawnproatl.com/vendors`
 - Vendor sign-in: `https://lawnproatl.com/vendor/login`
-- Vendor dashboard: `https://lawnproatl.com/vendor/dashboard`
-- Private admin review: `https://lawnproatl.com/admin/vendors`
+- Approved vendor dashboard: `https://lawnproatl.com/vendor/dashboard`
+- Admin review queue: `https://lawnproatl.com/admin/vendors`
 
-## Activate the database-backed queue
+## Firebase configuration
 
-1. In Render, create a new Blueprint from `beehall8/lawnpro`.
-2. Render reads `render.yaml` and creates the `lawnpro-api` service and PostgreSQL database.
-3. After the first successful deployment, copy the public API URL.
-4. In the Hostinger frontend deployment, add:
+- Firestore database: `(default)`, Standard edition, `nam5`
+- Authentication provider: Email/Password
+- Admin email: `cliquebots@gmail.com`
+- Security rules: `firestore.rules`
+- Firebase project mapping: `.firebaserc`
 
-   ```env
-   VITE_API_URL=https://YOUR-LAWNPRO-API.onrender.com
-   ```
+The registered web app configuration is included in the frontend so the existing GitHub deployment works without a new Hostinger environment-variable step. Optional `VITE_FIREBASE_*` variables can override it later. These are public browser configuration values, not Firebase Admin SDK credentials.
 
-5. Redeploy the Hostinger frontend.
-6. In Render, open the `lawnpro-api` environment variables and copy the generated `VENDOR_ADMIN_KEY`. This is the private passcode for `/admin/vendors`.
+Deploy rule changes from the repository root with:
 
-## Verify
+```bash
+npx firebase-tools deploy --only firestore:rules,firestore:indexes --project lawnproatl-85df0
+```
 
-1. Submit a new application at `/vendors`. Database-connected applications include password fields.
-2. Open `/admin/vendors`, enter `VENDOR_ADMIN_KEY`, and confirm the application is Pending.
-3. Approve it.
-4. Sign in at `/vendor/login` with the applicant email and password.
-5. Confirm rejected and pending applicants cannot enter `/vendor/dashboard`.
+## First admin sign-in
 
-Applications submitted before the database connection was activated were delivered by email only and will not be backfilled automatically.
+1. Open `/admin/vendors`.
+2. Choose **First time? Create the admin account**.
+3. Use `cliquebots@gmail.com` and a unique password.
+4. Open the Firebase verification email and verify the address.
+5. Return to `/admin/vendors`, sign in, and review applications.
+
+The Firestore rules require both the exact project-owner email and a verified email token for admin reads and status updates.
+
+## Verify the workflow
+
+1. Submit a new application at `/vendors` and create a vendor password.
+2. Confirm it appears as **Pending** at `/admin/vendors`.
+3. Confirm the vendor cannot access `/vendor/dashboard` while pending.
+4. Approve the application in the admin queue.
+5. Sign in at `/vendor/login` with the applicant email and password.
+6. Confirm the approved vendor reaches the dashboard.
+
+Applications submitted before Firestore was connected were delivered by email only and are not backfilled automatically.

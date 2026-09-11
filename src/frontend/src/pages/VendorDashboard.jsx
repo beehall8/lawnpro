@@ -1,6 +1,8 @@
 import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { MapPin, DollarSign, Star, Clock, CheckCircle, XCircle, Navigation } from 'lucide-react'
+import { signOut as firebaseSignOut } from 'firebase/auth'
+import { auth } from '../firebase'
 
 const sampleJobs = [
   {
@@ -65,8 +67,8 @@ function VendorDashboard() {
   const jobsCompleted = 12
   const avgRating = 4.8
 
-  const signOut = () => {
-    sessionStorage.removeItem('lawnProVendorToken')
+  const signOut = async () => {
+    await firebaseSignOut(auth)
     sessionStorage.removeItem('lawnProVendorProfile')
     navigate('/vendor/login', { replace: true })
   }
