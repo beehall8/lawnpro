@@ -109,6 +109,18 @@ function AdminVendorApplications() {
       : { status: 'verify', message: 'The account is not verified yet. Open the verification email and try again.' })
   }
 
+  const resendVerification = async () => {
+    if (!auth.currentUser) return
+    setState({ status: 'loading', message: '' })
+
+    try {
+      await sendEmailVerification(auth.currentUser, { url: 'https://lawnproatl.com/admin/vendors' })
+      setState({ status: 'verify', message: `A new verification email was sent to ${auth.currentUser.email}. Check your inbox and spam folder.` })
+    } catch (error) {
+      setState({ status: 'error', message: authMessage(error) })
+    }
+  }
+
   const logOut = async () => {
     await signOut(auth)
     setAllApplications([])
@@ -140,6 +152,7 @@ function AdminVendorApplications() {
           {user && !user.emailVerified ? (
             <div className="mt-7 space-y-3">
               <button type="button" onClick={checkVerification} className="btn-primary w-full">I verified my email</button>
+              <button type="button" disabled={state.status === 'loading'} onClick={resendVerification} className="w-full rounded-lg border border-lawn-600 px-4 py-3 font-semibold text-lawn-700 hover:bg-lawn-50 disabled:cursor-not-allowed disabled:opacity-60">{state.status === 'loading' ? 'Sending verification email…' : 'Resend verification email'}</button>
               <button type="button" onClick={logOut} className="w-full rounded-lg border border-gray-300 px-4 py-3 font-semibold text-gray-700">Use another account</button>
             </div>
           ) : (
