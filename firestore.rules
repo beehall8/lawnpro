@@ -8,8 +8,7 @@ service cloud.firestore {
 
     function isAdmin() {
       return signedIn()
-        && request.auth.token.email == 'cliquebots@gmail.com'
-        && request.auth.token.email_verified == true;
+        && request.auth.uid == 'wMtrFLvsXUObDuRDMyKQcPqXvwD2';
     }
 
     function isValidApplication(uid) {
