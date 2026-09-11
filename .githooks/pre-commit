@@ -1,0 +1,60 @@
+#!/bin/bash
+# Pre-commit hook: block commits containing secrets
+# Scans staged files for common secret patterns
+
+RED='\033[0;31m'
+YELLOW='\033[1;33m'
+GREEN='\033[0;32m'
+NC='\033[0m'
+
+# Patterns that indicate a leaked secret
+PATTERNS=(
+    'ghp_[A-Za-z0-9]{36}'                    # GitHub classic PAT
+    'github_pat_[A-Za-z0-9_]{82}'            # GitHub fine-grained PAT
+    'gho_[A-Za-z0-9]{36}'                    # GitHub OAuth token
+    'ghs_[A-Za-z0-9]{36}'                    # GitHub app token
+    'sk_live_[A-Za-z0-9]{24,}'               # Stripe live secret key
+    'sk_test_[A-Za-z0-9]{24,}'               # Stripe test secret key
+    'rk_live_[A-Za-z0-9]{24,}'               # Stripe restricted key
+    'AKIA[0-9A-Z]{16}'                       # AWS access key
+    'AIza[0-9A-Za-z_-]{35}'                  # Google API key
+    '-----BEGIN [A-Z ]+PRIVATE KEY-----'     # Private keys (SSH, RSA, etc.)
+    'xox[baprs]-[A-Za-z0-9-]{10,}'           # Slack tokens
+    'SG\.[A-Za-z0-9_-]{22}\.[A-Za-z0-9_-]{43}' # SendGrid
+    're_[A-Za-z0-9]{24,}'                    # Resend API key
+    'AC[a-f0-9]{32}'                         # Twilio account SID
+)
+
+FILES=$(git diff --cached --name-only --diff-filter=ACM)
+[ -z "$FILES" ] && exit 0
+
+FOUND=0
+for FILE in $FILES; do
+    # Skip binaries and node_modules
+    if [[ "$FILE" == *node_modules/* ]] || [[ "$FILE" == *.jpg ]] || [[ "$FILE" == *.png ]] || [[ "$FILE" == *.pdf ]]; then
+        continue
+    fi
+    # Skip files that don't exist (deleted)
+    [ ! -f "$FILE" ] && continue
+
+    for PATTERN in "${PATTERNS[@]}"; do
+        MATCH=$(git diff --cached "$FILE" | grep -E "^\+" | grep -oE "$PATTERN" | head -1)
+        if [ -n "$MATCH" ]; then
+            echo -e "${RED}❌ SECRET DETECTED${NC} in ${YELLOW}$FILE${NC}"
+            echo -e "   Pattern: $PATTERN"
+            echo -e "   Match: ${MATCH:0:15}... (truncated)"
+            FOUND=1
+        fi
+    done
+done
+
+if [ $FOUND -eq 1 ]; then
+    echo ""
+    echo -e "${RED}⛔ Commit blocked - secrets found in staged files.${NC}"
+    echo -e "${YELLOW}Fix: remove the secret, move it to .env (which is gitignored), and revoke the exposed key.${NC}"
+    echo -e "${YELLOW}Bypass (NOT RECOMMENDED): git commit --no-verify${NC}"
+    exit 1
+fi
+
+echo -e "${GREEN}✅ No secrets detected in staged files.${NC}"
+exit 0

@@ -5,6 +5,7 @@ import authRoutes from './routes/auth.js'
 import propertyRoutes from './routes/properties.js'
 import orderRoutes from './routes/orders.js'
 import vendorRoutes from './routes/vendors.js'
+import estimateRoutes from './routes/estimate.js'
 
 dotenv.config()
 
@@ -27,6 +28,7 @@ app.use('/api/v1/auth', authRoutes)
 app.use('/api/v1/properties', propertyRoutes)
 app.use('/api/v1/orders', orderRoutes)
 app.use('/api/v1/vendors', vendorRoutes)
+app.use('/api/v1/properties', estimateRoutes)
 
 // Health check
 app.get('/health', (req, res) => {
