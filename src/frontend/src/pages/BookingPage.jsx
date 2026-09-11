@@ -1,7 +1,7 @@
 import './BookingPage.css'
 import { useState } from 'react'
-import { launchZips, validateAddress } from '../../../shared/lawn-estimation.mjs'
-import { lawnSizes, estimateRange, formatRange } from '../../../shared/lawn-sizes.mjs'
+import { launchZips, validateAddress } from '../shared/lawn-estimation.mjs'
+import { lawnSizes, estimateRange, formatRange } from '../shared/lawn-sizes.mjs'
 import { Link } from 'react-router-dom'
 import { Check, ChevronRight, MapPin, Calendar, Clock, DollarSign, Leaf, ShieldCheck, ShoppingCart, Tag, Scissors, Sprout, Wind, Ruler, Droplets } from 'lucide-react'
 
