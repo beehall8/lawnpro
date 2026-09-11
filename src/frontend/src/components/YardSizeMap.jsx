@@ -41,8 +41,8 @@ export default function YardSizeMap({ address, onSizeConfirmed }) {
     window.gm_authFailure = authFailure
     let timer = setTimeout(() => { if (!cancelled) setStatus('The map is taking longer than expected. You can use the lawn-size cards instead.') }, 15000)
     loadMaps(key).then(async maps => {
-      const [{ Map, Polygon }, { Geocoder }, { spherical }] = await Promise.all([
-        maps.importLibrary('maps'), maps.importLibrary('geocoding'), maps.importLibrary('geometry')
+      const [{ Map, Polygon }, { Geocoder }, { spherical }, { MVCArray }] = await Promise.all([
+        maps.importLibrary('maps'), maps.importLibrary('geocoding'), maps.importLibrary('geometry'), maps.importLibrary('core')
       ])
       if (cancelled || failed) return
       setStatus('Locating your property…')
@@ -64,6 +64,8 @@ export default function YardSizeMap({ address, onSizeConfirmed }) {
       if (!place?.geometry?.location || place.partial_match || !['ROOFTOP', 'RANGE_INTERPOLATED'].includes(place.geometry.location_type)) throw new Error('We could not locate this exact street address. Check the address or use the size cards.')
       const map = new Map(host.current, { center: place.geometry.location, zoom: 19, mapTypeId: 'satellite', tilt: 0, streetViewControl: false, mapTypeControl: false, fullscreenControl: true })
       const shape = new Polygon({ map, paths: [], editable: true, fillColor: '#4ade80', fillOpacity: 0.35, strokeColor: '#16803d', strokeWeight: 2 })
+      // An empty paths array may contain no first ring. Set a concrete editable ring.
+      shape.setPath(new MVCArray())
       polygon.current = shape
       const update = () => {
         const points = shape.getPath()
