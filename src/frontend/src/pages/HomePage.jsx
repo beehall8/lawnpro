@@ -53,7 +53,7 @@ function HomePage() {
             muted
             loop
             playsInline
-            poster="/lawn-pro-hero.png"
+            preload="auto"
             aria-hidden="true"
           >
             <source src={heroVideoUrl} type="video/mp4" />
