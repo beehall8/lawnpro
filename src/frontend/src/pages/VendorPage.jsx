@@ -74,7 +74,7 @@ function VendorPage() {
       })
       const result = await response.json().catch(() => null)
 
-      if (!response.ok || result?.success === false) {
+      if (!response.ok || result?.success === false || result?.success === 'false') {
         throw new Error(result?.message || 'The application could not be submitted.')
       }
 
