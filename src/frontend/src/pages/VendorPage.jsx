@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
-import { BadgeCheck, Briefcase, CalendarCheck, CheckCircle2, DollarSign, MapPin, ShieldCheck, Sprout } from 'lucide-react'
+import { AlertCircle, BadgeCheck, Briefcase, CalendarCheck, CheckCircle2, DollarSign, Loader2, MapPin, ShieldCheck, Sprout } from 'lucide-react'
 
 const services = ['Mowing', 'Trimming', 'Edging', 'Leaf removal', 'Fertilizing', 'Weed control']
 
@@ -18,17 +18,20 @@ const initialApplication = {
   services: [],
 }
 
+const applicationEndpoint = import.meta.env.VITE_VENDOR_APPLICATION_ENDPOINT
+  || 'https://formsubmit.co/ajax/support@lawnproatl.com'
+
 function VendorPage() {
   const [application, setApplication] = useState(initialApplication)
-  const [submitted, setSubmitted] = useState(false)
+  const [submission, setSubmission] = useState({ status: 'idle', message: '' })
 
   const updateField = (field, value) => {
-    setSubmitted(false)
+    setSubmission({ status: 'idle', message: '' })
     setApplication(current => ({ ...current, [field]: value }))
   }
 
   const toggleService = (service) => {
-    setSubmitted(false)
+    setSubmission({ status: 'idle', message: '' })
     setApplication(current => ({
       ...current,
       services: current.services.includes(service)
@@ -37,26 +40,55 @@ function VendorPage() {
     }))
   }
 
-  const handleSubmit = (event) => {
+  const handleSubmit = async (event) => {
     event.preventDefault()
 
-    const body = [
-      `Name: ${application.name}`,
-      `Business: ${application.business || 'Not provided'}`,
-      `Email: ${application.email}`,
-      `Phone: ${application.phone}`,
-      `ZIP code: ${application.zip}`,
-      `Years of experience: ${application.experience || 'Not provided'}`,
-      `Services: ${application.services.join(', ') || 'Not selected'}`,
-      `Availability: ${application.availability || 'Not provided'}`,
-      `Insured: ${application.insured ? 'Yes' : 'No'}`,
-      '',
-      'Notes:',
-      application.notes || 'None',
-    ].join('\n')
+    if (application.services.length === 0) {
+      setSubmission({ status: 'error', message: 'Select at least one service you offer.' })
+      return
+    }
 
-    window.location.href = `mailto:support@lawnproatl.com?subject=${encodeURIComponent(`Vendor application from ${application.name}`)}&body=${encodeURIComponent(body)}`
-    setSubmitted(true)
+    setSubmission({ status: 'sending', message: '' })
+
+    const formData = new FormData()
+    formData.append('_subject', `New Lawn Pro application: ${application.name}`)
+    formData.append('_template', 'table')
+    formData.append('_captcha', 'false')
+    formData.append('_autoresponse', 'Thanks for applying to become a Lawn Pro. We received your application and will contact you after it has been reviewed.')
+    formData.append('Name', application.name.trim())
+    formData.append('Business', application.business.trim() || 'Not provided')
+    formData.append('Email', application.email.trim())
+    formData.append('Phone', application.phone.trim())
+    formData.append('Primary ZIP code', application.zip)
+    formData.append('Years of experience', application.experience || 'Not provided')
+    formData.append('Services', application.services.join(', '))
+    formData.append('Availability', application.availability.trim() || 'Not provided')
+    formData.append('Business insurance', application.insured ? 'Yes' : 'No')
+    formData.append('Notes', application.notes.trim() || 'None')
+
+    try {
+      const response = await fetch(applicationEndpoint, {
+        method: 'POST',
+        headers: { Accept: 'application/json' },
+        body: formData,
+      })
+      const result = await response.json().catch(() => null)
+
+      if (!response.ok || result?.success === false) {
+        throw new Error(result?.message || 'The application could not be submitted.')
+      }
+
+      setApplication(initialApplication)
+      setSubmission({
+        status: 'success',
+        message: 'Application received. Our team will review it and contact you about the next steps.',
+      })
+    } catch (error) {
+      setSubmission({
+        status: 'error',
+        message: error.message || 'We could not submit your application. Please try again.',
+      })
+    }
   }
 
   return (
@@ -114,10 +146,11 @@ function VendorPage() {
           <div className="rounded-3xl border border-lawn-100 bg-white p-6 sm:p-10 shadow-lg">
             <div className="flex gap-4">
               <ShieldCheck className="mt-1 text-lawn-600 shrink-0" />
-              <div><h2 className="text-3xl font-bold text-lawn-800">Apply to become a Lawn Pro</h2><p className="mt-2 text-gray-600">Complete this form to prepare an application email for our team.</p></div>
+              <div><h2 className="text-3xl font-bold text-lawn-800">Apply to become a Lawn Pro</h2><p className="mt-2 text-gray-600">Complete the form and our team will review your application.</p></div>
             </div>
 
-            {submitted && <div role="status" className="mt-6 rounded-xl border border-lawn-200 bg-lawn-50 p-4 text-lawn-800">Your email app has opened with your application ready to send to support@lawnproatl.com. Send the email to complete your application.</div>}
+            {submission.status === 'success' && <div role="status" className="mt-6 flex gap-3 rounded-xl border border-lawn-200 bg-lawn-50 p-4 text-lawn-800"><CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0" aria-hidden="true" /><span>{submission.message}</span></div>}
+            {submission.status === 'error' && <div role="alert" className="mt-6 flex gap-3 rounded-xl border border-red-200 bg-red-50 p-4 text-red-800"><AlertCircle className="mt-0.5 h-5 w-5 shrink-0" aria-hidden="true" /><span>{submission.message}</span></div>}
 
             <form className="mt-8 space-y-6" onSubmit={handleSubmit}>
               <div className="grid sm:grid-cols-2 gap-5">
@@ -129,13 +162,16 @@ function VendorPage() {
                 <label className="block text-sm font-semibold text-gray-700">Years of experience<select value={application.experience} onChange={event => updateField('experience', event.target.value)} className="mt-2 w-full rounded-lg border border-gray-300 bg-white px-4 py-3 font-normal focus:border-lawn-600 focus:outline-none focus:ring-2 focus:ring-lawn-100"><option value="">Select one</option><option>Less than 1 year</option><option>1–2 years</option><option>3–5 years</option><option>6+ years</option></select></label>
               </div>
 
-              <fieldset><legend className="text-sm font-semibold text-gray-700">Services you offer</legend><div className="mt-3 grid sm:grid-cols-2 gap-3">{services.map(service => <label key={service} className="flex items-center gap-3 rounded-lg border border-gray-200 px-4 py-3 hover:border-lawn-400"><input type="checkbox" checked={application.services.includes(service)} onChange={() => toggleService(service)} className="h-4 w-4 accent-lawn-600" />{service}</label>)}</div></fieldset>
+              <fieldset><legend className="text-sm font-semibold text-gray-700">Services you offer <span className="text-red-600" aria-hidden="true">*</span></legend><div className="mt-3 grid sm:grid-cols-2 gap-3">{services.map(service => <label key={service} className="flex items-center gap-3 rounded-lg border border-gray-200 px-4 py-3 hover:border-lawn-400"><input type="checkbox" checked={application.services.includes(service)} onChange={() => toggleService(service)} className="h-4 w-4 accent-lawn-600" />{service}</label>)}</div></fieldset>
 
               <label className="block text-sm font-semibold text-gray-700">When are you usually available?<textarea rows="3" value={application.availability} onChange={event => updateField('availability', event.target.value)} className="mt-2 w-full rounded-lg border border-gray-300 px-4 py-3 font-normal focus:border-lawn-600 focus:outline-none focus:ring-2 focus:ring-lawn-100" placeholder="For example: weekdays after 9 AM and Saturday mornings" /></label>
               <label className="block text-sm font-semibold text-gray-700">Anything else we should know? <span className="font-normal text-gray-500">(optional)</span><textarea rows="4" value={application.notes} onChange={event => updateField('notes', event.target.value)} className="mt-2 w-full rounded-lg border border-gray-300 px-4 py-3 font-normal focus:border-lawn-600 focus:outline-none focus:ring-2 focus:ring-lawn-100" placeholder="Equipment, service area, certifications, or other details" /></label>
               <label className="flex gap-3 text-sm text-gray-700"><input type="checkbox" checked={application.insured} onChange={event => updateField('insured', event.target.checked)} className="mt-0.5 h-4 w-4 accent-lawn-600" />I have active business insurance, or I understand proof of insurance may be required before approval.</label>
               <label className="flex gap-3 text-sm text-gray-700"><input required type="checkbox" checked={application.agreed} onChange={event => updateField('agreed', event.target.checked)} className="mt-0.5 h-4 w-4 accent-lawn-600" />I confirm the information in this application is accurate and agree to be contacted about becoming a Lawn Pro provider.</label>
-              <button type="submit" className="btn-primary w-full py-3">Prepare application email</button>
+              <button type="submit" disabled={submission.status === 'sending'} className="btn-primary flex w-full items-center justify-center gap-2 py-3 disabled:cursor-not-allowed disabled:opacity-70">
+                {submission.status === 'sending' && <Loader2 className="h-5 w-5 animate-spin" aria-hidden="true" />}
+                {submission.status === 'sending' ? 'Submitting application…' : 'Submit application'}
+              </button>
             </form>
           </div>
         </section>
