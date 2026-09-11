@@ -3,6 +3,7 @@ import HomePage from './pages/HomePage'
 import BookingPage from './pages/BookingPage'
 import VendorDashboard from './pages/VendorDashboard'
 import ServiceCompletion from './pages/ServiceCompletion'
+import VendorPage from './pages/VendorPage'
 
 function App() {
   return (
@@ -10,6 +11,7 @@ function App() {
       <Routes>
         <Route path="/" element={<HomePage />} />
         <Route path="/book" element={<BookingPage />} />
+        <Route path="/vendors" element={<VendorPage />} />
         <Route path="/vendor/dashboard" element={<VendorDashboard />} />
         <Route path="/vendor/complete/:jobId" element={<ServiceCompletion />} />
       </Routes>

@@ -32,7 +32,7 @@ function HomePage() {
             <div className="hidden md:flex space-x-8">
               <a href="#services" className="text-gray-600 hover:text-lawn-600">Services</a>
               <a href="#how-it-works" className="text-gray-600 hover:text-lawn-600">How It Works</a>
-              <a href="#vendors" className="text-gray-600 hover:text-lawn-600">For Vendors</a>
+              <Link to="/vendors" className="text-gray-600 hover:text-lawn-600">For Vendors</Link>
             </div>
             <div className="flex space-x-4">
               <Link to="/vendor/dashboard" className="text-gray-600 hover:text-lawn-600 px-4 py-2">
@@ -68,7 +68,7 @@ function HomePage() {
             <p>Lawn Pro connects you with trusted, local lawn care professionals. Quality service. Fair prices. Great results.</p>
             <div className="lawn-hero-actions">
               <Link to="/book" className="lawn-hero-primary">Book Lawn Service <span aria-hidden="true">↗</span></Link>
-              <Link to="/vendor/dashboard" className="lawn-hero-secondary">Become a Pro</Link>
+              <Link to="/vendors" className="lawn-hero-secondary">Become a Pro</Link>
             </div>
             <div className="lawn-hero-benefits">
               <div><CheckCircle aria-hidden="true" /><span><strong>Local Lawn Care</strong>Professionals in your area</span></div>
