@@ -1,102 +1,15 @@
-# 🗺️ Yard Size Estimation
+# Map measurement in booking
 
-Simple, map-based lot/yard size measurement for quoting. **No computer vision, no ML.**
+The address step offers “Help me measure my lawn” after the customer confirms a supported physical address. The map geocodes that address, displays satellite imagery at zoom 19, and lets customers tap corners and drag editable polygon points. The Geometry library calculates the drawn area. Confirming selects Small (up to 3,000), Medium (up to 6,000), Large (below 10,000), or XL (10,000 and above). Size cards remain available as a fallback. No AI detection or automatic property boundaries are claimed.
 
-## Flow
+The old DrawingManager integration has been replaced by standard Map and Polygon events. The map does not require Places autocomplete: it uses the existing booking address and Geocoding instead.
 
-```
-Customer enters address
-   ↓
-Google Geocoding API → lat/lng
-   ↓
-Google Maps satellite view centered on property
-   ↓
-Customer draws polygon around their yard
-(or accepts auto-suggested parcel outline if available)
-   ↓
-Google Maps Geometry Library computes area (sq ft)
-   ↓
-Display: "Estimated yard size: 5,240 sq ft"
-   ↓
-Customer confirms → quote generated
-   ↓
-Vendor verifies on first visit (optional adjustment)
-```
+## Activation
 
-## Why This Approach
+Enable Maps JavaScript API and Geocoding API in a billing-enabled Google Cloud project. Set VITE_GOOGLE_MAPS_API_KEY in the frontend build environment and redeploy. Restrict this browser key to the site hostname (and localhost for development), and to the required APIs. No private backend credential belongs in a VITE variable.
 
-- **Fast to build** (days, not weeks)
-- **Cheap** ($5-10/mo at MVP volume vs $50-100/mo for CV)
-- **Accurate enough** - customer-drawn polygons are ~95% accurate for quoting
-- **No ML expertise needed**
-- Room to add CV/grass detection later without changing the API contract
+Missing credentials, ambiguous address matches, or loading failures leave size cards usable. Map-confirmed measurements stay in the page session and set the pricing tier; they are not persisted to orders. The existing estimate-size backend route is not called by this client flow. Outlines need customer review and may include incorrect or crossed areas; professional verification remains necessary.
 
-## APIs Used
+## Verification
 
-| API | Purpose | Cost |
-|---|---|---|
-| Google Geocoding API | Address → lat/lng | $5 per 1,000 |
-| Google Maps JavaScript API | Interactive satellite map + Drawing tools | $7 per 1,000 loads |
-| Google Maps Geometry Library | `computeArea()` on polygon | Free (client-side) |
-
-Est. cost at 1,000 quotes/mo: **~$12/mo**
-
-## Backend Contract
-
-### `POST /api/v1/properties/estimate-size`
-
-**Request:**
-```json
-{
-  "address": "123 Main St, Stone Mountain, GA 30087",
-  "polygon": [
-    { "lat": 33.8081, "lng": -84.1700 },
-    { "lat": 33.8082, "lng": -84.1698 },
-    { "lat": 33.8080, "lng": -84.1697 },
-    { "lat": 33.8079, "lng": -84.1699 }
-  ]
-}
-```
-
-**Response:**
-```json
-{
-  "success": true,
-  "data": {
-    "address": "123 Main St, Stone Mountain, GA 30087",
-    "coordinates": { "lat": 33.80805, "lng": -84.16985 },
-    "areaSqFt": 5240,
-    "areaAcres": 0.12,
-    "source": "customer_polygon",
-    "confidence": "customer_confirmed"
-  }
-}
-```
-
-`source` values: `customer_polygon` | `parcel_data` (future) | `cv_detected` (future).
-
-## Frontend Component
-
-`src/frontend/src/components/YardSizeMap.jsx` renders:
-
-1. Address input (with Google Places autocomplete)
-2. Satellite map centered on property (zoom ~19-20)
-3. Polygon drawing tool (click to add vertices, double-click to close)
-4. Live area readout in sq ft as user draws
-5. "Confirm size" button → posts to backend
-
-## Future Enhancements (Post-MVP)
-
-- **Parcel data integration** (Regrid API, ~$99/mo) - pre-populate polygon from tax records
-- **Auto-subtract house/driveway** using Google's building footprint data
-- **Computer vision grass detection** - only if quote disputes become a real problem
-- **Historical satellite imagery** - track lawn condition over time
-
-## Testing Checklist
-
-- [ ] Address autocomplete works for GA service areas
-- [ ] Map loads at high zoom over the property
-- [ ] User can draw a polygon with 3+ points
-- [ ] Area updates in real-time while drawing
-- [ ] Backend receives coordinates and returns sq ft
-- [ ] Result stored on the Order/Property record
+Frontend build and existing pricing tests pass. Live imagery, geocoding, drawing, and key restrictions must be checked with the configured account before launch. No Google credentials were added or provider charges incurred during implementation.

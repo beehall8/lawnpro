@@ -1,3 +1,4 @@
+import YardSizeMap from '../components/YardSizeMap'
 import './BookingPage.css'
 import { useState } from 'react'
 import { launchZips, validateAddress } from '../shared/lawn-estimation.mjs'
@@ -33,6 +34,8 @@ function BookingPage() {
     zip: '',
   })
   const [lawnSize, setLawnSize] = useState('')
+  const [showMap, setShowMap] = useState(false)
+  const [measuredArea, setMeasuredArea] = useState(null)
   const [addressConfirmed, setAddressConfirmed] = useState(false)
   const selectedSize = lawnSizes.find(size => size.id === lawnSize)
   const addressError = validateAddress(address)
@@ -40,6 +43,8 @@ function BookingPage() {
   const updateAddress = (field, value) => {
     setAddress(previous => ({ ...previous, [field]: value }))
     setAddressConfirmed(false)
+    setShowMap(false)
+    setMeasuredArea(null)
     setLawnSize('')
   }
   const toggleService = (serviceId) => {
@@ -140,6 +145,9 @@ function BookingPage() {
               <fieldset className="lawn-size-section">
                 <legend>Choose your lawn size</legend>
                 <p>Select the closest range for the grass area you want mowed. Prices and times below are averages for professional mowing.</p>
+                <button type="button" className="btn-primary my-3" disabled={!!addressError || !addressConfirmed} onClick={() => setShowMap(value => !value)}>{showMap ? 'Hide map' : 'Help me measure my lawn'}</button>
+                {showMap && <YardSizeMap address={`${address.street}, ${address.city}, ${address.state} ${address.zip}`} onSizeConfirmed={({ areaSqFt }) => { setMeasuredArea(areaSqFt); setLawnSize(areaSqFt <= 3000 ? 'small' : areaSqFt <= 6000 ? 'medium' : areaSqFt < 10000 ? 'large' : 'xl') }} />}
+                {measuredArea && <p role="status">Your confirmed outline: {measuredArea.toLocaleString()} sq ft. You can override the suggested tier below.</p>}
                 <div className="lawn-size-grid">
                   {lawnSizes.map(size => <label key={size.id} className={`lawn-size-card ${lawnSize === size.id ? 'is-selected' : ''}`}>
                     <input type="radio" name="lawn-size" value={size.id} checked={lawnSize === size.id} onChange={() => setLawnSize(size.id)} />
@@ -173,6 +181,13 @@ function BookingPage() {
                 </label>
               })}
             </div>
+            {selectedServices.includes('mowing') && <section className="yard-map-panel" aria-labelledby="mowing-map-heading">
+              <h2 id="mowing-map-heading" className="text-xl font-semibold">Measure your lawn for mowing</h2>
+              <p>Outline the grass on a satellite map to choose the matching lawn-size tier.</p>
+              <button type="button" className="btn-primary" onClick={() => setShowMap(value => !value)}>{showMap ? 'Hide map' : 'Measure my lawn on map'}</button>
+              {showMap && <YardSizeMap address={`${address.street}, ${address.city}, ${address.state} ${address.zip}`} onSizeConfirmed={({ areaSqFt }) => { setMeasuredArea(areaSqFt); setLawnSize(areaSqFt <= 3000 ? 'small' : areaSqFt <= 6000 ? 'medium' : areaSqFt < 10000 ? 'large' : 'xl') }} />}
+              {measuredArea && <p role="status">Confirmed outline: {measuredArea.toLocaleString()} sq ft · {selectedSize?.name} lawn</p>}
+            </section>}
             <div className="service-note"><ShieldCheck aria-hidden="true" /><div><strong>Lawn care that fits your needs</strong><p>Select one or more services to build your estimate.</p></div></div>
 
             {/* Frequency Selection */}
