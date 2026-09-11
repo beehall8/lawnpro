@@ -46,10 +46,22 @@ export default function YardSizeMap({ address, onSizeConfirmed }) {
       ])
       if (cancelled || failed) return
       setStatus('Locating your property…')
-      const result = await new Geocoder().geocode({ address, componentRestrictions: { country: 'US', administrativeArea: 'GA' } })
+      const results = await new Promise((resolve, reject) => {
+        new Geocoder().geocode(
+          { address, componentRestrictions: { country: 'US', administrativeArea: 'GA' } },
+          (matches, status) => {
+            if (status === 'OK' && Array.isArray(matches) && matches.length) resolve(matches)
+            else {
+              const error = new Error(`Address lookup failed (${status || 'NO_RESPONSE'}). Please check your address or choose a size card.`)
+              error.code = status === 'OK' ? 'ZERO_RESULTS' : status
+              reject(error)
+            }
+          }
+        )
+      })
       if (cancelled || failed) return
-      const place = result.results[0]
-      if (!place || place.partial_match || !['ROOFTOP', 'RANGE_INTERPOLATED'].includes(place.geometry.location_type)) throw new Error('We could not locate this exact street address. Check the address or use the size cards.')
+      const place = results[0]
+      if (!place?.geometry?.location || place.partial_match || !['ROOFTOP', 'RANGE_INTERPOLATED'].includes(place.geometry.location_type)) throw new Error('We could not locate this exact street address. Check the address or use the size cards.')
       const map = new Map(host.current, { center: place.geometry.location, zoom: 19, mapTypeId: 'satellite', tilt: 0, streetViewControl: false, mapTypeControl: false, fullscreenControl: true })
       const shape = new Polygon({ map, paths: [], editable: true, fillColor: '#4ade80', fillOpacity: 0.35, strokeColor: '#16803d', strokeWeight: 2 })
       polygon.current = shape
