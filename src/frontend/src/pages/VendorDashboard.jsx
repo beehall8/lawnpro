@@ -1,71 +1,119 @@
-import { useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { MapPin, DollarSign, Star, Clock, CheckCircle, XCircle, Navigation } from 'lucide-react'
+import { Briefcase, Calendar, CheckCircle, Clock, DollarSign, Loader2, LogOut, MapPin, Sprout } from 'lucide-react'
 import { signOut as firebaseSignOut } from 'firebase/auth'
-import { auth } from '../firebase'
+import { collection, doc, onSnapshot, query, runTransaction, serverTimestamp, where } from 'firebase/firestore'
+import { auth, db } from '../firebase'
 
-const sampleJobs = [
-  {
-    id: 1,
-    address: '123 Oak Street, Austin, TX 78701',
-    service: 'Mowing',
-    lawnSize: 5200,
-    payout: 45,
-    distance: 2.3,
-    customerRating: 4.8,
-    date: 'Today',
-    timeWindow: '10:00 AM - 12:00 PM'
-  },
-  {
-    id: 2,
-    address: '456 Maple Ave, Austin, TX 78704',
-    service: 'Trimming + Edging',
-    lawnSize: 3800,
-    payout: 55,
-    distance: 3.1,
-    customerRating: 4.9,
-    date: 'Today',
-    timeWindow: '2:00 PM - 4:00 PM'
-  },
-  {
-    id: 3,
-    address: '789 Pine Rd, Austin, TX 78745',
-    service: 'Full Service',
-    lawnSize: 8500,
-    payout: 95,
-    distance: 5.7,
-    customerRating: 4.7,
-    date: 'Tomorrow',
-    timeWindow: '8:00 AM - 10:00 AM'
-  },
-  {
-    id: 4,
-    address: '321 Elm Blvd, Austin, TX 78702',
-    service: 'Mowing',
-    lawnSize: 4200,
-    payout: 40,
-    distance: 1.8,
-    customerRating: 5.0,
-    date: 'Tomorrow',
-    timeWindow: '12:00 PM - 2:00 PM'
-  },
-]
+const formatMoneyRange = job => {
+  const money = value => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(value || 0)
+  if (job.estimateOpenEnded) return `${money(job.estimatedMin)} - Up`
+  return job.estimatedMin === job.estimatedMax ? money(job.estimatedMin) : `${money(job.estimatedMin)}–${money(job.estimatedMax)}`
+}
+
+const formatDate = value => {
+  if (!value) return 'Date not provided'
+  const date = new Date(`${value}T12:00:00`)
+  return Number.isNaN(date.getTime()) ? value : date.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })
+}
+
+const sortJobs = jobs => [...jobs].sort((a, b) => (a.scheduledDate || '').localeCompare(b.scheduledDate || ''))
+
+function JobCard({ job, accepted, accepting, onAccept }) {
+  const fullAddress = [job.address?.street, job.address?.city, job.address?.state, job.address?.zip].filter(Boolean).join(', ')
+  return <article className="card transition-shadow hover:shadow-lg">
+    <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
+      <div className="min-w-0 flex-1">
+        <div className="flex flex-wrap items-center gap-2">
+          <h3 className="text-xl font-bold text-gray-900">{job.serviceNames?.join(' + ') || 'Lawn service'}</h3>
+          {accepted && <span className="rounded-full bg-lawn-100 px-3 py-1 text-sm font-semibold text-lawn-800">Accepted</span>}
+        </div>
+        <p className="mt-2 flex items-start gap-2 text-gray-600"><MapPin className="mt-0.5 h-4 w-4 shrink-0" />{fullAddress}</p>
+        <div className="mt-4 flex flex-wrap gap-x-5 gap-y-2 text-sm text-gray-600">
+          <span className="flex items-center gap-2"><Calendar className="h-4 w-4" />{formatDate(job.scheduledDate)}</span>
+          <span className="flex items-center gap-2"><Clock className="h-4 w-4" />{job.timeWindow}</span>
+          <span className="flex items-center gap-2"><Sprout className="h-4 w-4" />{job.lawnSizeName || 'Lawn size pending'}{job.lawnSizeRange ? ` · ${job.lawnSizeRange} sq ft` : ''}</span>
+        </div>
+        {accepted && <div className="mt-4 rounded-xl bg-gray-50 p-4 text-sm text-gray-700">
+          <strong>Customer:</strong> {job.customerName} · {job.customerPhone} · {job.customerEmail}
+          {job.notes && <p className="mt-2"><strong>Instructions:</strong> {job.notes}</p>}
+        </div>}
+      </div>
+      <div className="flex shrink-0 items-center justify-between gap-5 border-t pt-4 lg:block lg:min-w-44 lg:border-l lg:border-t-0 lg:pl-6 lg:pt-0 lg:text-right">
+        <div><p className="text-sm text-gray-500">Estimated job value</p><p className="text-2xl font-bold text-lawn-700">{formatMoneyRange(job)}</p></div>
+        {!accepted && <button type="button" onClick={() => onAccept(job.id)} disabled={accepting} className="btn-primary mt-0 flex min-w-32 items-center justify-center gap-2 disabled:opacity-60 lg:mt-4 lg:w-full">
+          {accepting ? <Loader2 className="h-5 w-5 animate-spin" /> : <CheckCircle className="h-5 w-5" />}{accepting ? 'Accepting…' : 'Accept job'}
+        </button>}
+      </div>
+    </div>
+  </article>
+}
 
 function VendorDashboard() {
   const navigate = useNavigate()
   const vendor = JSON.parse(sessionStorage.getItem('lawnProVendorProfile') || '{}')
-  const [viewMode, setViewMode] = useState('list') // 'list' or 'map'
-  const [filter, setFilter] = useState('all')
-  
-  const filteredJobs = sampleJobs.filter(job => {
-    if (filter === 'today') return job.date === 'Today'
-    if (filter === 'tomorrow') return job.date === 'Tomorrow'
-    return true
-  })
-  
-  const weeklyEarnings = sampleJobs.reduce((sum, job) => sum + job.payout, 0)
-  const jobsCompleted = 12
-  const avgRating = 4.8
+  const [tab, setTab] = useState('available')
+  const [availableJobs, setAvailableJobs] = useState([])
+  const [assignedJobs, setAssignedJobs] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
+  const [acceptingId, setAcceptingId] = useState('')
+
+  useEffect(() => {
+    if (!auth.currentUser) return undefined
+    const availableQuery = query(collection(db, 'jobs'), where('status', '==', 'PENDING'))
+    const assignedQuery = query(collection(db, 'jobs'), where('assignedVendorId', '==', auth.currentUser.uid))
+    let availableReady = false
+    let assignedReady = false
+    const markReady = () => { if (availableReady && assignedReady) setLoading(false) }
+    const handleError = () => {
+      setError('Jobs could not be loaded. Refresh the page and try again.')
+      setLoading(false)
+    }
+    const unsubscribeAvailable = onSnapshot(availableQuery, snapshot => {
+      setAvailableJobs(snapshot.docs.map(item => ({ id: item.id, ...item.data() })))
+      availableReady = true
+      markReady()
+    }, handleError)
+    const unsubscribeAssigned = onSnapshot(assignedQuery, snapshot => {
+      setAssignedJobs(snapshot.docs.map(item => ({ id: item.id, ...item.data() })))
+      assignedReady = true
+      markReady()
+    }, handleError)
+    return () => {
+      unsubscribeAvailable()
+      unsubscribeAssigned()
+    }
+  }, [])
+
+  const displayedJobs = useMemo(() => sortJobs(tab === 'available' ? availableJobs : assignedJobs), [availableJobs, assignedJobs, tab])
+
+  const acceptJob = async jobId => {
+    if (!auth.currentUser) return
+    setAcceptingId(jobId)
+    setError('')
+    try {
+      await runTransaction(db, async transaction => {
+        const reference = doc(db, 'jobs', jobId)
+        const snapshot = await transaction.get(reference)
+        if (!snapshot.exists() || snapshot.data().status !== 'PENDING' || snapshot.data().assignedVendorId) {
+          throw new Error('already-accepted')
+        }
+        transaction.update(reference, {
+          status: 'ACCEPTED',
+          assignedVendorId: auth.currentUser.uid,
+          acceptedAt: serverTimestamp(),
+        })
+      })
+      setTab('assigned')
+    } catch (acceptError) {
+      setError(acceptError?.message === 'already-accepted'
+        ? 'Another vendor accepted this job first. The available list has been refreshed.'
+        : 'This job could not be accepted. Please try again.')
+    } finally {
+      setAcceptingId('')
+    }
+  }
 
   const signOut = async () => {
     await firebaseSignOut(auth)
@@ -73,164 +121,47 @@ function VendorDashboard() {
     navigate('/vendor/login', { replace: true })
   }
 
-  return (
-    <div className="min-h-screen bg-gray-50">
-      {/* Header */}
-      <nav className="bg-lawn-700 text-white shadow-lg">
-        <div className="max-w-7xl mx-auto px-4 py-4">
-          <div className="flex justify-between items-center">
-            <Link to="/" className="flex items-center space-x-2">
-              <span className="text-2xl">🌱</span>
-              <span className="font-bold text-xl">Lawn Pro Pro</span>
-            </Link>
-            <div className="flex items-center space-x-4">
-              <div className="text-right hidden sm:block">
-                <div className="text-sm opacity-90">Welcome back,</div>
-                <div className="font-semibold">{vendor.businessName || vendor.name || 'Lawn Pro Vendor'}</div>
-              </div>
-              <button onClick={signOut} className="bg-white text-lawn-700 px-4 py-2 rounded-lg font-medium hover:bg-gray-100">
-                Logout
-              </button>
-            </div>
-          </div>
-        </div>
-      </nav>
+  const acceptedValue = {
+    estimatedMin: assignedJobs.reduce((sum, job) => sum + (job.estimatedMin || 0), 0),
+    estimatedMax: assignedJobs.reduce((sum, job) => sum + (job.estimatedMax || 0), 0),
+    estimateOpenEnded: assignedJobs.some(job => job.estimateOpenEnded),
+  }
 
-      {/* Earnings Summary */}
-      <div className="bg-white border-b">
-        <div className="max-w-7xl mx-auto px-4 py-6">
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            <div className="text-center p-4 bg-lawn-50 rounded-lg">
-              <DollarSign className="w-8 h-8 mx-auto text-lawn-600 mb-2" />
-              <div className="text-2xl font-bold text-lawn-700">${weeklyEarnings}</div>
-              <div className="text-sm text-gray-600">This Week</div>
-            </div>
-            <div className="text-center p-4 bg-blue-50 rounded-lg">
-              <CheckCircle className="w-8 h-8 mx-auto text-blue-600 mb-2" />
-              <div className="text-2xl font-bold text-blue-700">{jobsCompleted}</div>
-              <div className="text-sm text-gray-600">Jobs Completed</div>
-            </div>
-            <div className="text-center p-4 bg-yellow-50 rounded-lg">
-              <Star className="w-8 h-8 mx-auto text-yellow-600 mb-2" />
-              <div className="text-2xl font-bold text-yellow-700">{avgRating}</div>
-              <div className="text-sm text-gray-600">Avg Rating</div>
-            </div>
-            <div className="text-center p-4 bg-purple-50 rounded-lg">
-              <Clock className="w-8 h-8 mx-auto text-purple-600 mb-2" />
-              <div className="text-2xl font-bold text-purple-700">4</div>
-              <div className="text-sm text-gray-600">Available Jobs</div>
-            </div>
-          </div>
+  return <div className="min-h-screen bg-gray-50">
+    <nav className="bg-lawn-700 text-white shadow-lg">
+      <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-4">
+        <Link to="/" className="flex items-center gap-2 text-xl font-bold"><Sprout /> Lawn Pro</Link>
+        <div className="flex items-center gap-4">
+          <div className="hidden text-right sm:block"><div className="text-sm opacity-80">Signed in as</div><div className="font-semibold">{vendor.businessName || vendor.name || 'Lawn Pro Vendor'}</div></div>
+          <button onClick={signOut} className="flex items-center gap-2 rounded-lg bg-white px-4 py-2 font-semibold text-lawn-700 hover:bg-gray-100"><LogOut className="h-4 w-4" />Sign out</button>
         </div>
       </div>
+    </nav>
 
-      {/* Main Content */}
-      <div className="max-w-7xl mx-auto px-4 py-8">
-        {/* Controls */}
-        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
-          <div className="flex space-x-2">
-            <button
-              onClick={() => setFilter('all')}
-              className={`px-4 py-2 rounded-lg font-medium ${
-                filter === 'all' ? 'bg-lawn-600 text-white' : 'bg-white text-gray-700 hover:bg-gray-100'
-              }`}
-            >
-              All Jobs
-            </button>
-            <button
-              onClick={() => setFilter('today')}
-              className={`px-4 py-2 rounded-lg font-medium ${
-                filter === 'today' ? 'bg-lawn-600 text-white' : 'bg-white text-gray-700 hover:bg-gray-100'
-              }`}
-            >
-              Today
-            </button>
-            <button
-              onClick={() => setFilter('tomorrow')}
-              className={`px-4 py-2 rounded-lg font-medium ${
-                filter === 'tomorrow' ? 'bg-lawn-600 text-white' : 'bg-white text-gray-700 hover:bg-gray-100'
-              }`}
-            >
-              Tomorrow
-            </button>
-          </div>
-          
-          <button
-            onClick={() => setViewMode(viewMode === 'list' ? 'map' : 'list')}
-            className="flex items-center space-x-2 bg-white px-4 py-2 rounded-lg font-medium hover:bg-gray-100"
-          >
-            <Navigation size={18} />
-            <span>{viewMode === 'list' ? 'Map View' : 'List View'}</span>
-          </button>
-        </div>
+    <main className="mx-auto max-w-7xl px-4 py-8">
+      <div><p className="text-sm font-bold uppercase tracking-wider text-lawn-700">Job marketplace</p><h1 className="mt-1 text-3xl font-bold text-gray-900">Vendor dashboard</h1><p className="mt-2 text-gray-600">Claim available work and manage the jobs assigned to you.</p></div>
 
-        {/* Job List */}
-        <div className="space-y-4">
-          {filteredJobs.map((job) => (
-            <div key={job.id} className="card hover:shadow-lg transition-shadow">
-              <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-                {/* Job Info */}
-                <div className="flex-1">
-                  <div className="flex items-start justify-between mb-2">
-                    <div>
-                      <h3 className="text-lg font-semibold text-gray-900">{job.service}</h3>
-                      <div className="flex items-center text-gray-600 mt-1">
-                        <MapPin size={16} className="mr-1" />
-                        <span className="text-sm">{job.address}</span>
-                      </div>
-                    </div>
-                    <div className="text-right">
-                      <div className="text-2xl font-bold text-lawn-600">${job.payout}</div>
-                      <div className="text-sm text-gray-600">{job.lawnSize.toLocaleString()} sq ft</div>
-                    </div>
-                  </div>
-                  
-                  <div className="flex flex-wrap gap-4 mt-3">
-                    <div className="flex items-center text-sm text-gray-600">
-                      <Clock size={16} className="mr-1" />
-                      {job.date}, {job.timeWindow}
-                    </div>
-                    <div className="flex items-center text-sm text-gray-600">
-                      <Navigation size={16} className="mr-1" />
-                      {job.distance} miles
-                    </div>
-                    <div className="flex items-center text-sm text-gray-600">
-                      <Star size={16} className="mr-1 text-yellow-500 fill-current" />
-                      {job.customerRating}
-                    </div>
-                  </div>
-                </div>
+      <section className="mt-7 grid gap-4 sm:grid-cols-3">
+        <div className="card flex items-center gap-4"><Clock className="h-9 w-9 text-amber-600" /><div><p className="text-2xl font-bold">{availableJobs.length}</p><p className="text-sm text-gray-600">Available jobs</p></div></div>
+        <div className="card flex items-center gap-4"><Briefcase className="h-9 w-9 text-lawn-600" /><div><p className="text-2xl font-bold">{assignedJobs.length}</p><p className="text-sm text-gray-600">My accepted jobs</p></div></div>
+        <div className="card flex items-center gap-4"><DollarSign className="h-9 w-9 text-blue-600" /><div><p className="text-2xl font-bold">{assignedJobs.length ? formatMoneyRange(acceptedValue) : '$0'}</p><p className="text-sm text-gray-600">Accepted job value</p></div></div>
+      </section>
 
-                {/* Action Buttons */}
-                <div className="flex space-x-3">
-                  <Link
-                    to={`/vendor/complete/${job.id}`}
-                    className="btn-primary px-6 py-3 flex items-center space-x-2"
-                  >
-                    <CheckCircle size={18} />
-                    <span>Accept</span>
-                  </Link>
-                  <button className="bg-red-100 text-red-700 px-6 py-3 rounded-lg font-medium hover:bg-red-200 transition-colors flex items-center space-x-2">
-                    <XCircle size={18} />
-                    <span>Decline</span>
-                  </button>
-                </div>
-              </div>
-            </div>
-          ))}
-        </div>
-
-        {/* Empty State */}
-        {filteredJobs.length === 0 && (
-          <div className="text-center py-12">
-            <Clock className="w-16 h-16 mx-auto text-gray-400 mb-4" />
-            <h3 className="text-xl font-semibold text-gray-700 mb-2">No Jobs Available</h3>
-            <p className="text-gray-600">Check back later for new opportunities in your area.</p>
-          </div>
-        )}
+      <div className="mt-8 flex gap-2 border-b border-gray-200" role="tablist" aria-label="Vendor jobs">
+        <button role="tab" aria-selected={tab === 'available'} onClick={() => setTab('available')} className={`border-b-2 px-4 py-3 font-semibold ${tab === 'available' ? 'border-lawn-600 text-lawn-700' : 'border-transparent text-gray-600'}`}>Available jobs ({availableJobs.length})</button>
+        <button role="tab" aria-selected={tab === 'assigned'} onClick={() => setTab('assigned')} className={`border-b-2 px-4 py-3 font-semibold ${tab === 'assigned' ? 'border-lawn-600 text-lawn-700' : 'border-transparent text-gray-600'}`}>My jobs ({assignedJobs.length})</button>
       </div>
-    </div>
-  )
+
+      {error && <div role="alert" className="mt-6 rounded-xl border border-red-200 bg-red-50 p-4 text-red-800">{error}</div>}
+      {loading ? <div className="flex items-center justify-center gap-3 py-20 text-gray-600"><Loader2 className="animate-spin" />Loading jobs…</div> : displayedJobs.length ? <div className="mt-6 space-y-4">
+        {displayedJobs.map(job => <JobCard key={job.id} job={job} accepted={tab === 'assigned'} accepting={acceptingId === job.id} onAccept={acceptJob} />)}
+      </div> : <section className="mt-8 rounded-2xl border border-dashed border-gray-300 bg-white p-12 text-center">
+        <Briefcase className="mx-auto h-12 w-12 text-gray-400" />
+        <h2 className="mt-4 text-xl font-bold text-gray-800">{tab === 'available' ? 'No jobs are available right now' : 'You have not accepted a job yet'}</h2>
+        <p className="mt-2 text-gray-600">{tab === 'available' ? 'New customer requests will appear here automatically.' : 'Choose an available job and accept it to add it here.'}</p>
+      </section>}
+    </main>
+  </div>
 }
 
 export default VendorDashboard
