@@ -4,7 +4,9 @@ import { useState } from 'react'
 import { launchZips, validateAddress } from '../shared/lawn-estimation.mjs'
 import { lawnSizes, estimateRange, formatRange } from '../shared/lawn-sizes.mjs'
 import { Link } from 'react-router-dom'
-import { Check, ChevronRight, MapPin, Calendar, Clock, DollarSign, Leaf, ShieldCheck, ShoppingCart, Tag, Scissors, Sprout, Wind, Ruler, Droplets } from 'lucide-react'
+import { addDoc, collection, serverTimestamp } from 'firebase/firestore'
+import { db, isFirebaseConfigured } from '../firebase'
+import { AlertCircle, Check, CheckCircle, MapPin, Calendar, Clock, Leaf, Loader2, ShieldCheck, ShoppingCart, Tag, Scissors, Sprout, Wind, Ruler, Droplets } from 'lucide-react'
 
 const services = [
   { id: 'mowing', name: 'Mowing', price: 35, icon: '🌱', description: 'Professional lawn mowing with cleanup' },
@@ -37,7 +39,12 @@ function BookingPage() {
   const [showMap, setShowMap] = useState(false)
   const [measuredArea, setMeasuredArea] = useState(null)
   const [addressConfirmed, setAddressConfirmed] = useState(false)
+  const [schedule, setSchedule] = useState({ date: '', timeWindow: '8:00 AM - 10:00 AM', notes: '' })
+  const [customer, setCustomer] = useState({ name: '', email: '', phone: '' })
+  const [submission, setSubmission] = useState({ status: 'idle', message: '' })
   const selectedSize = lawnSizes.find(size => size.id === lawnSize)
+  const now = new Date()
+  const earliestScheduleDate = new Date(now.getTime() - now.getTimezoneOffset() * 60000).toISOString().slice(0, 10)
   const addressError = validateAddress(address)
   const canContinueAddress = !addressError && addressConfirmed && !!selectedSize
   const updateAddress = (field, value) => {
@@ -60,6 +67,7 @@ function BookingPage() {
   const handleContinue = () => {
     if (step === 1 && !canContinueAddress) return
     if (step === 2 && !selectedServices.length) return
+    if (step === 3 && !schedule.date) return
     if (step < 4) setStep(step + 1)
   }
   
@@ -67,16 +75,77 @@ function BookingPage() {
     if (step > 1) setStep(step - 1)
   }
 
+  const submitJob = async () => {
+    if (!isFirebaseConfigured || !customer.name.trim() || !customer.email.trim() || !customer.phone.trim()) {
+      setSubmission({ status: 'error', message: 'Enter your name, email, and phone number before submitting.' })
+      return
+    }
+
+    setSubmission({ status: 'loading', message: '' })
+    try {
+      const selectedFrequency = frequencies.find(item => item.id === frequency)
+      const selectedServiceRecords = services.filter(service => selectedServices.includes(service.id))
+      await addDoc(collection(db, 'jobs'), {
+        customerName: customer.name.trim(),
+        customerEmail: customer.email.trim().toLowerCase(),
+        customerPhone: customer.phone.trim(),
+        address: {
+          street: address.street.trim(),
+          city: address.city.trim(),
+          state: address.state.trim().toUpperCase(),
+          zip: address.zip.trim(),
+        },
+        services: selectedServices,
+        serviceNames: selectedServiceRecords.map(service => service.name),
+        frequency,
+        frequencyName: selectedFrequency?.name || 'One-Time',
+        lawnSizeId: selectedSize?.id || null,
+        lawnSizeName: selectedSize?.name || null,
+        lawnSizeRange: selectedSize?.range || null,
+        measuredArea: measuredArea || null,
+        scheduledDate: schedule.date,
+        timeWindow: schedule.timeWindow,
+        notes: schedule.notes.trim(),
+        estimatedMin: Math.round(total.min * 100) / 100,
+        estimatedMax: Math.round(total.max * 100) / 100,
+        estimateOpenEnded: total.openEnded,
+        status: 'PENDING',
+        assignedVendorId: null,
+        createdAt: serverTimestamp(),
+        acceptedAt: null,
+      })
+      setSubmission({ status: 'success', message: 'Your service request has been submitted. A Lawn Pro will claim the job shortly.' })
+    } catch (error) {
+      setSubmission({
+        status: 'error',
+        message: error?.code === 'permission-denied'
+          ? 'The job system is still being activated. Please try again shortly.'
+          : 'We could not submit your request. Please try again.',
+      })
+    }
+  }
+
+  if (submission.status === 'success') {
+    return <main className="grid min-h-screen place-items-center bg-lawn-50 px-4">
+      <section className="card max-w-lg text-center">
+        <CheckCircle className="mx-auto h-16 w-16 text-lawn-600" />
+        <h1 className="mt-5 text-3xl font-bold text-gray-900">Service request received</h1>
+        <p className="mt-3 text-gray-600">{submission.message}</p>
+        <Link to="/" className="btn-primary mt-7 inline-block">Return home</Link>
+      </section>
+    </main>
+  }
+
   return (
     <div className="booking-layout">
       <aside className="booking-sidebar">
         <Link to="/" className="booking-brand"><Leaf aria-hidden="true" /><span>LAWN <b>PRO</b></span></Link>
         <ol className="booking-steps" aria-label="Booking progress">
-          {['Address', 'Services', 'Schedule', 'Payment'].map((label, index) => (
+          {['Address', 'Services', 'Schedule', 'Review'].map((label, index) => (
             <li key={label} className={step === index + 1 ? 'active' : step > index + 1 ? 'complete' : ''} aria-current={step === index + 1 ? 'step' : undefined}>
               <button type="button" disabled={index + 1 > step} onClick={() => setStep(index + 1)}>
                 <span className="step-number">{step > index + 1 ? <Check size={18} /> : index + 1}</span>
-                <span><strong>{label}</strong><small>{index === 0 ? (address.street || 'Enter your address') : ['','Select your services','Choose a date & time','Review your selection'][index]}</small></span>
+                <span><strong>{label}</strong><small>{index === 0 ? (address.street || 'Enter your address') : ['','Select your services','Choose a date & time','Submit your request'][index]}</small></span>
               </button>
             </li>
           ))}
@@ -233,6 +302,10 @@ function BookingPage() {
                 </label>
                 <input
                   type="date"
+                  required
+                  min={earliestScheduleDate}
+                  value={schedule.date}
+                  onChange={event => setSchedule(current => ({ ...current, date: event.target.value }))}
                   className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-lawn-500"
                 />
               </div>
@@ -240,7 +313,7 @@ function BookingPage() {
                 <label className="block text-sm font-medium text-gray-700 mb-2 flex items-center">
                   <Clock className="mr-2" size={18} /> Time Window
                 </label>
-                <select className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-lawn-500">
+                <select value={schedule.timeWindow} onChange={event => setSchedule(current => ({ ...current, timeWindow: event.target.value }))} className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-lawn-500">
                   <option>8:00 AM - 10:00 AM</option>
                   <option>10:00 AM - 12:00 PM</option>
                   <option>12:00 PM - 2:00 PM</option>
@@ -252,6 +325,9 @@ function BookingPage() {
                 <label className="block text-sm font-medium text-gray-700 mb-2">Special Instructions</label>
                 <textarea
                   rows={3}
+                  maxLength={1000}
+                  value={schedule.notes}
+                  onChange={event => setSchedule(current => ({ ...current, notes: event.target.value }))}
                   className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-lawn-500"
                   placeholder="Gate code, pet information, specific areas to focus on, etc."
                 />
@@ -260,10 +336,11 @@ function BookingPage() {
           </div>
         )}
 
-        {/* Step 4: Payment */}
+        {/* Step 4: Review and contact */}
         {step === 4 && (
           <div className="card">
-            <h2 className="text-2xl font-bold mb-6">Review & Payment</h2>
+            <h2 className="text-2xl font-bold mb-2">Review your request</h2>
+            <p className="mb-6 text-gray-600">Tell us how to reach you. You will not be charged today.</p>
             
             {/* Order Summary */}
             <div className="bg-gray-50 rounded-lg p-6 mb-6">
@@ -290,17 +367,12 @@ function BookingPage() {
               </div>
             </div>
 
-            {/* Payment Form Placeholder */}
-            <div className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Card Information</label>
-                <div className="border border-gray-300 rounded-lg p-4 bg-gray-50">
-                  <p className="text-gray-600 text-sm">
-                    🔒 Secure payment powered by Stripe (integration required)
-                  </p>
-                </div>
-              </div>
+            <div className="grid gap-4 md:grid-cols-2">
+              <label className="block text-sm font-semibold text-gray-700 md:col-span-2">Name<input required maxLength={120} value={customer.name} onChange={event => setCustomer(current => ({ ...current, name: event.target.value }))} className="mt-2 w-full rounded-lg border border-gray-300 px-4 py-3 font-normal focus:ring-2 focus:ring-lawn-500" /></label>
+              <label className="block text-sm font-semibold text-gray-700">Email<input required type="email" maxLength={254} value={customer.email} onChange={event => setCustomer(current => ({ ...current, email: event.target.value }))} className="mt-2 w-full rounded-lg border border-gray-300 px-4 py-3 font-normal focus:ring-2 focus:ring-lawn-500" /></label>
+              <label className="block text-sm font-semibold text-gray-700">Phone number<input required type="tel" maxLength={40} value={customer.phone} onChange={event => setCustomer(current => ({ ...current, phone: event.target.value }))} className="mt-2 w-full rounded-lg border border-gray-300 px-4 py-3 font-normal focus:ring-2 focus:ring-lawn-500" /></label>
             </div>
+            {submission.status === 'error' && <div role="alert" className="mt-5 flex gap-3 rounded-xl border border-red-200 bg-red-50 p-4 text-red-800"><AlertCircle className="shrink-0" />{submission.message}</div>}
           </div>
         )}
 
@@ -318,15 +390,15 @@ function BookingPage() {
             Back
           </button>
           {step !== 2 && <button
-            onClick={handleContinue}
-            disabled={step === 4 || step === 1 && !canContinueAddress || step === 2 && selectedServices.length === 0}
+            onClick={step === 4 ? submitJob : handleContinue}
+            disabled={submission.status === 'loading' || step === 1 && !canContinueAddress || step === 3 && !schedule.date}
             className={`btn-primary px-8 py-3 ${
-              (step === 1 && !canContinueAddress) || (step === 2 && selectedServices.length === 0)
+              (step === 1 && !canContinueAddress) || (step === 3 && !schedule.date)
                 ? 'opacity-50 cursor-not-allowed'
                 : ''
             }`}
           >
-            {step === 4 ? 'Checkout coming soon' : 'Continue'}
+            {submission.status === 'loading' ? <span className="flex items-center gap-2"><Loader2 className="h-5 w-5 animate-spin" />Submitting…</span> : step === 4 ? 'Submit service request' : 'Continue'}
           </button>}
         </div>
       </main>
