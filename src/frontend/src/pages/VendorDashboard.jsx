@@ -37,6 +37,7 @@ function JobCard({ job, accepted, accepting, onAccept }) {
         {accepted && <div className="mt-4 rounded-xl bg-gray-50 p-4 text-sm text-gray-700">
           <strong>Customer:</strong> {job.customerName} · {job.customerPhone} · {job.customerEmail}
           {job.notes && <p className="mt-2"><strong>Instructions:</strong> {job.notes}</p>}
+          {job.status === 'AWAITING_FINAL_PAYMENT' && <p className="mt-2 font-semibold text-amber-700">Finished photos submitted — Square invoice sent to customer.</p>}
         </div>}
       </div>
       <div className="flex shrink-0 items-center justify-between gap-5 border-t pt-4 lg:block lg:min-w-44 lg:border-l lg:border-t-0 lg:pl-6 lg:pt-0 lg:text-right">
@@ -44,6 +45,7 @@ function JobCard({ job, accepted, accepting, onAccept }) {
         {!accepted && <button type="button" onClick={() => onAccept(job.id)} disabled={accepting} className="btn-primary mt-0 flex min-w-32 items-center justify-center gap-2 disabled:opacity-60 lg:mt-4 lg:w-full">
           {accepting ? <Loader2 className="h-5 w-5 animate-spin" /> : <CheckCircle className="h-5 w-5" />}{accepting ? 'Accepting…' : 'Accept job'}
         </button>}
+        {accepted && job.status === 'ACCEPTED' && <Link to={`/vendor/complete/${job.id}`} className="btn-primary mt-4 inline-flex w-full items-center justify-center gap-2">Complete job</Link>}
       </div>
     </div>
   </article>

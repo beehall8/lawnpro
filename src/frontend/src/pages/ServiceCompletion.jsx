@@ -1,215 +1,64 @@
-import { useState } from 'react'
-import { useParams, Link } from 'react-router-dom'
-import { Upload, Camera, CheckCircle, MapPin, DollarSign, User } from 'lucide-react'
+import { useEffect, useState } from 'react'
+import { Link, useParams } from 'react-router-dom'
+import { Camera, CheckCircle, Loader2, MapPin, Upload, X } from 'lucide-react'
+import { doc, getDoc } from 'firebase/firestore'
+import { httpsCallable } from 'firebase/functions'
+import { getDownloadURL, ref, uploadBytes } from 'firebase/storage'
+import { auth, db, functions, storage } from '../firebase'
+
+const money = cents => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format((cents || 0) / 100)
 
 function ServiceCompletion() {
   const { jobId } = useParams()
-  const [beforePhoto, setBeforePhoto] = useState(null)
-  const [afterPhoto, setAfterPhoto] = useState(null)
+  const [job, setJob] = useState(null)
+  const [photos, setPhotos] = useState([])
   const [notes, setNotes] = useState('')
+  const [loading, setLoading] = useState(true)
+  const [submitting, setSubmitting] = useState(false)
+  const [error, setError] = useState('')
   const [submitted, setSubmitted] = useState(false)
-  
-  // Sample job data (would come from API in real app)
-  const job = {
-    id: jobId,
-    address: '123 Oak Street, Austin, TX 78701',
-    service: 'Mowing',
-    customer: 'John D.',
-    payout: 45,
-    lawnSize: 5200
-  }
 
-  const handlePhotoUpload = (type, file) => {
-    const reader = new FileReader()
-    reader.onloadend = () => {
-      type === 'before' ? setBeforePhoto(reader.result) : setAfterPhoto(reader.result)
+  useEffect(() => {
+    const load = async () => {
+      try {
+        const snapshot = await getDoc(doc(db, 'jobs', jobId))
+        if (!snapshot.exists()) throw new Error('This job was not found.')
+        const data = snapshot.data()
+        if (data.assignedVendorId !== auth.currentUser?.uid || data.status !== 'ACCEPTED') throw new Error('This job is not available to complete.')
+        setJob({ id: snapshot.id, ...data })
+      } catch (loadError) { setError(loadError.message || 'We could not load this job.') }
+      finally { setLoading(false) }
     }
-    if (file) reader.readAsDataURL(file)
+    load()
+  }, [jobId])
+
+  const addPhotos = event => {
+    const valid = Array.from(event.target.files || []).filter(file => file.type.startsWith('image/')).slice(0, 6 - photos.length)
+    setPhotos(current => [...current, ...valid.map(file => ({ file, preview: URL.createObjectURL(file) }))])
+    event.target.value = ''
   }
 
-  const handleSubmit = () => {
-    if (beforePhoto && afterPhoto) {
-      // In real app, would upload to server
+  const completeJob = async () => {
+    if (!photos.length || !job || submitting) return
+    setSubmitting(true); setError('')
+    try {
+      const uploads = await Promise.all(photos.map(async ({ file }, index) => {
+        const name = `${Date.now()}-${index}-${file.name.replace(/[^a-zA-Z0-9._-]/g, '-')}`
+        const upload = await uploadBytes(ref(storage, `job-completions/${job.id}/${name}`), file, { contentType: file.type })
+        return getDownloadURL(upload.ref)
+      }))
+      const requestFinalPayment = httpsCallable(functions, 'requestFinalPayment')
+      await requestFinalPayment({ jobId: job.id, photoUrls: uploads, notes })
       setSubmitted(true)
-    }
+    } catch (submitError) {
+      setError(submitError?.message || 'We could not complete this job. Please try again.')
+    } finally { setSubmitting(false) }
   }
 
-  if (submitted) {
-    return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center px-4">
-        <div className="card text-center max-w-md">
-          <CheckCircle className="w-20 h-20 mx-auto text-lawn-600 mb-4" />
-          <h2 className="text-2xl font-bold text-gray-900 mb-2">Job Completed!</h2>
-          <p className="text-gray-600 mb-6">
-            Your photos and notes have been submitted. The customer will be notified and payment will be processed.
-          </p>
-          <div className="bg-lawn-50 rounded-lg p-4 mb-6">
-            <div className="text-2xl font-bold text-lawn-700">${job.payout}</div>
-            <div className="text-sm text-gray-600">Payout Amount</div>
-          </div>
-          <Link to="/vendor/dashboard" className="btn-primary w-full block text-center">
-            Back to Dashboard
-          </Link>
-        </div>
-      </div>
-    )
-  }
+  if (loading) return <div className="flex min-h-screen items-center justify-center gap-3 bg-gray-50 text-gray-600"><Loader2 className="animate-spin" />Loading job…</div>
+  if (submitted) return <main className="grid min-h-screen place-items-center bg-gray-50 px-4"><section className="card max-w-lg text-center"><CheckCircle className="mx-auto h-16 w-16 text-lawn-600" /><h1 className="mt-5 text-3xl font-bold">Job marked complete</h1><p className="mt-3 text-gray-600">The finished photos were saved and Square emailed the customer an invoice for the remaining {money(job.pricing?.balanceCents)}.</p><Link to="/vendor/dashboard" className="btn-primary mt-7 inline-block">Return to dashboard</Link></section></main>
 
-  return (
-    <div className="min-h-screen bg-gray-50">
-      {/* Header */}
-      <nav className="bg-white shadow-sm sticky top-0 z-50">
-        <div className="max-w-7xl mx-auto px-4 py-4">
-          <Link to="/vendor/dashboard" className="text-lawn-600 hover:text-lawn-700">
-            ← Back to Dashboard
-          </Link>
-        </div>
-      </nav>
-
-      <div className="max-w-4xl mx-auto px-4 py-8">
-        {/* Job Info */}
-        <div className="card mb-6">
-          <h2 className="text-2xl font-bold mb-4">Complete Job #{job.id}</h2>
-          <div className="grid md:grid-cols-3 gap-4">
-            <div className="flex items-center space-x-3">
-              <MapPin className="text-gray-400" />
-              <div>
-                <div className="text-sm text-gray-600">Address</div>
-                <div className="font-medium">{job.address}</div>
-              </div>
-            </div>
-            <div className="flex items-center space-x-3">
-              <User className="text-gray-400" />
-              <div>
-                <div className="text-sm text-gray-600">Customer</div>
-                <div className="font-medium">{job.customer}</div>
-              </div>
-            </div>
-            <div className="flex items-center space-x-3">
-              <DollarSign className="text-gray-400" />
-              <div>
-                <div className="text-sm text-gray-600">Payout</div>
-                <div className="font-medium text-lawn-600">${job.payout}</div>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Photo Upload Section */}
-        <div className="card mb-6">
-          <h3 className="text-xl font-bold mb-4">Before & After Photos</h3>
-          <p className="text-gray-600 mb-6">
-            Upload photos of the lawn before and after your work. This is required for payment processing.
-          </p>
-          
-          <div className="grid md:grid-cols-2 gap-6">
-            {/* Before Photo */}
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Before Photo</label>
-              <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center hover:border-lawn-500 transition-colors">
-                {beforePhoto ? (
-                  <div className="relative">
-                    <img src={beforePhoto} alt="Before" className="rounded-lg max-h-48 mx-auto" />
-                    <button
-                      onClick={() => setBeforePhoto(null)}
-                      className="absolute top-2 right-2 bg-red-500 text-white rounded-full p-1 hover:bg-red-600"
-                    >
-                      <Upload size={16} />
-                    </button>
-                  </div>
-                ) : (
-                  <div>
-                    <Camera className="w-12 h-12 mx-auto text-gray-400 mb-2" />
-                    <p className="text-sm text-gray-600 mb-2">Click to upload or take photo</p>
-                    <input
-                      type="file"
-                      accept="image/*"
-                      capture="environment"
-                      onChange={(e) => handlePhotoUpload('before', e.target.files[0])}
-                      className="hidden"
-                      id="before-photo"
-                    />
-                    <label
-                      htmlFor="before-photo"
-                      className="btn-primary inline-block cursor-pointer"
-                    >
-                      Choose Photo
-                    </label>
-                  </div>
-                )}
-              </div>
-            </div>
-
-            {/* After Photo */}
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">After Photo</label>
-              <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center hover:border-lawn-500 transition-colors">
-                {afterPhoto ? (
-                  <div className="relative">
-                    <img src={afterPhoto} alt="After" className="rounded-lg max-h-48 mx-auto" />
-                    <button
-                      onClick={() => setAfterPhoto(null)}
-                      className="absolute top-2 right-2 bg-red-500 text-white rounded-full p-1 hover:bg-red-600"
-                    >
-                      <Upload size={16} />
-                    </button>
-                  </div>
-                ) : (
-                  <div>
-                    <Camera className="w-12 h-12 mx-auto text-gray-400 mb-2" />
-                    <p className="text-sm text-gray-600 mb-2">Click to upload or take photo</p>
-                    <input
-                      type="file"
-                      accept="image/*"
-                      capture="environment"
-                      onChange={(e) => handlePhotoUpload('after', e.target.files[0])}
-                      className="hidden"
-                      id="after-photo"
-                    />
-                    <label
-                      htmlFor="after-photo"
-                      className="btn-primary inline-block cursor-pointer"
-                    >
-                      Choose Photo
-                    </label>
-                  </div>
-                )}
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Notes Section */}
-        <div className="card mb-6">
-          <h3 className="text-xl font-bold mb-4">Completion Notes</h3>
-          <textarea
-            value={notes}
-            onChange={(e) => setNotes(e.target.value)}
-            rows={4}
-            className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-lawn-500 focus:border-transparent"
-            placeholder="Add any notes about the job completion, special circumstances, or issues encountered..."
-          />
-          <p className="text-sm text-gray-600 mt-2">
-            Optional but recommended for dispute resolution
-          </p>
-        </div>
-
-        {/* Submit Button */}
-        <div className="flex justify-end">
-          <button
-            onClick={handleSubmit}
-            disabled={!beforePhoto || !afterPhoto}
-            className={`btn-primary px-8 py-3 flex items-center space-x-2 ${
-              !beforePhoto || !afterPhoto ? 'opacity-50 cursor-not-allowed' : ''
-            }`}
-          >
-            <CheckCircle size={20} />
-            <span>Submit Completion</span>
-          </button>
-        </div>
-      </div>
-    </div>
-  )
+  return <main className="min-h-screen bg-gray-50 px-4 py-8"><div className="mx-auto max-w-3xl"><Link to="/vendor/dashboard" className="text-lawn-700 hover:underline">← Back to dashboard</Link><section className="card mt-5"><h1 className="text-2xl font-bold">Complete job</h1>{job && <div className="mt-5 rounded-xl bg-gray-50 p-4"><p className="flex gap-2"><MapPin className="h-5 w-5 text-lawn-700" />{[job.address?.street, job.address?.city, job.address?.state, job.address?.zip].filter(Boolean).join(', ')}</p><p className="mt-2 text-sm text-gray-600">Customer: {job.customerName} · Remaining balance: <strong>{money(job.pricing?.balanceCents)}</strong></p></div>}<div className="mt-6"><h2 className="text-lg font-bold">Finished-job photos</h2><p className="mt-1 text-sm text-gray-600">Upload at least one photo. These are saved with the job before the customer receives the final Square invoice.</p><input id="completed-photos" type="file" accept="image/*" capture="environment" multiple className="hidden" onChange={addPhotos} disabled={photos.length >= 6} /><label htmlFor="completed-photos" className="btn-primary mt-4 inline-flex cursor-pointer items-center gap-2"><Camera className="h-5 w-5" />Add photos</label>{photos.length > 0 && <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3">{photos.map((photo, index) => <div key={photo.preview} className="relative"><img src={photo.preview} alt={`Finished job ${index + 1}`} className="h-32 w-full rounded-lg object-cover" /><button type="button" onClick={() => setPhotos(current => current.filter((_, itemIndex) => itemIndex !== index))} className="absolute right-2 top-2 rounded-full bg-white p-1 text-gray-700 shadow"><X className="h-4 w-4" /></button></div>)}</div>}</div><label className="mt-6 block text-sm font-semibold">Completion notes <textarea value={notes} onChange={event => setNotes(event.target.value)} maxLength={1000} rows={4} className="mt-2 w-full rounded-lg border border-gray-300 p-3 font-normal" placeholder="Optional notes for the customer" /></label>{error && <p role="alert" className="mt-5 rounded-lg bg-red-50 p-4 text-red-800">{error}</p>}<button type="button" onClick={completeJob} disabled={!photos.length || submitting} className="btn-primary mt-6 flex items-center gap-2 disabled:opacity-50">{submitting ? <Loader2 className="animate-spin" /> : <Upload className="h-5 w-5" />}{submitting ? 'Saving photos and sending invoice…' : `Complete job and request ${money(job?.pricing?.balanceCents)}`}</button></section></div></main>
 }
 
 export default ServiceCompletion

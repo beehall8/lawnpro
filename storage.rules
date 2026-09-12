@@ -1,0 +1,29 @@
+rules_version = '2';
+
+service firebase.storage {
+  match /b/{bucket}/o {
+    function signedIn() { return request.auth != null; }
+    function isApprovedVendor() {
+      return signedIn()
+        && firestore.exists(/databases/(default)/documents/vendorApplications/$(request.auth.uid))
+        && firestore.get(/databases/(default)/documents/vendorApplications/$(request.auth.uid)).data.status == 'APPROVED';
+    }
+    function isAdmin() {
+      return signedIn() && request.auth.uid == 'wMtrFLvsXUObDuRDMyKQcPqXvwD2';
+    }
+    function ownsAcceptedJob(jobId) {
+      return firestore.exists(/databases/(default)/documents/jobs/$(jobId))
+        && firestore.get(/databases/(default)/documents/jobs/$(jobId)).data.assignedVendorId == request.auth.uid
+        && firestore.get(/databases/(default)/documents/jobs/$(jobId)).data.status == 'ACCEPTED';
+    }
+
+    match /job-completions/{jobId}/{fileName} {
+      allow read: if isAdmin() || (isApprovedVendor() && ownsAcceptedJob(jobId));
+      allow create: if isApprovedVendor()
+        && ownsAcceptedJob(jobId)
+        && request.resource.size < 10 * 1024 * 1024
+        && request.resource.contentType.matches('image/.*');
+      allow update, delete: if false;
+    }
+  }
+}

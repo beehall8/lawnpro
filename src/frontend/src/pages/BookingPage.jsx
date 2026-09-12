@@ -1,11 +1,10 @@
 import YardSizeMap from '../components/YardSizeMap'
 import './BookingPage.css'
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { launchZips, validateAddress } from '../shared/lawn-estimation.mjs'
 import { lawnSizes, estimateRange, formatRange } from '../shared/lawn-sizes.mjs'
 import { Link } from 'react-router-dom'
-import { addDoc, collection, serverTimestamp } from 'firebase/firestore'
-import { db, isFirebaseConfigured } from '../firebase'
+import SquareCardCheckout from '../components/SquareCardCheckout'
 import { AlertCircle, Check, CheckCircle, MapPin, Calendar, Clock, Leaf, Loader2, ShieldCheck, ShoppingCart, Tag, Scissors, Sprout, Wind, Ruler, Droplets } from 'lucide-react'
 
 const services = [
@@ -42,6 +41,7 @@ function BookingPage() {
   const [schedule, setSchedule] = useState({ date: '', timeWindow: '8:00 AM - 10:00 AM', notes: '' })
   const [customer, setCustomer] = useState({ name: '', email: '', phone: '' })
   const [submission, setSubmission] = useState({ status: 'idle', message: '' })
+  const squareCard = useRef(null)
   const selectedSize = lawnSizes.find(size => size.id === lawnSize)
   const now = new Date()
   const earliestScheduleDate = new Date(now.getTime() - now.getTimezoneOffset() * 60000).toISOString().slice(0, 10)
@@ -63,6 +63,12 @@ function BookingPage() {
   }
   
   const total = estimateRange(services.filter(service => selectedServices.includes(service.id)), selectedSize, frequencies.find(f => f.id === frequency)?.multiplier || 1)
+  // Checkout uses the displayed starting estimate. The function independently
+  // recalculates this amount before it asks Square to charge the card.
+  const checkoutTotalCents = Math.round(total.min * 1.2 * 100)
+  const depositCents = Math.round(checkoutTotalCents * 0.25)
+  const balanceCents = checkoutTotalCents - depositCents
+  const money = cents => `$${(cents / 100).toFixed(2)}`
 
   const handleContinue = () => {
     if (step === 1 && !canContinueAddress) return
@@ -76,51 +82,33 @@ function BookingPage() {
   }
 
   const submitJob = async () => {
-    if (!isFirebaseConfigured || !customer.name.trim() || !customer.email.trim() || !customer.phone.trim()) {
+    if (!customer.name.trim() || !customer.email.trim() || !customer.phone.trim()) {
       setSubmission({ status: 'error', message: 'Enter your name, email, and phone number before submitting.' })
       return
     }
 
     setSubmission({ status: 'loading', message: '' })
     try {
-      const selectedFrequency = frequencies.find(item => item.id === frequency)
-      const selectedServiceRecords = services.filter(service => selectedServices.includes(service.id))
-      await addDoc(collection(db, 'jobs'), {
-        customerName: customer.name.trim(),
-        customerEmail: customer.email.trim().toLowerCase(),
-        customerPhone: customer.phone.trim(),
-        address: {
-          street: address.street.trim(),
-          city: address.city.trim(),
-          state: address.state.trim().toUpperCase(),
-          zip: address.zip.trim(),
-        },
-        services: selectedServices,
-        serviceNames: selectedServiceRecords.map(service => service.name),
-        frequency,
-        frequencyName: selectedFrequency?.name || 'One-Time',
-        lawnSizeId: selectedSize?.id || null,
-        lawnSizeName: selectedSize?.name || null,
-        lawnSizeRange: selectedSize?.range || null,
-        measuredArea: measuredArea || null,
-        scheduledDate: schedule.date,
-        timeWindow: schedule.timeWindow,
-        notes: schedule.notes.trim(),
-        estimatedMin: Math.round(total.min * 100) / 100,
-        estimatedMax: Math.round(total.max * 100) / 100,
-        estimateOpenEnded: total.openEnded,
-        status: 'PENDING',
-        assignedVendorId: null,
-        createdAt: serverTimestamp(),
-        acceptedAt: null,
+      const sourceId = await squareCard.current?.tokenize()
+      if (!sourceId) throw new Error('Secure card form is still loading.')
+      const response = await fetch(import.meta.env.VITE_SQUARE_PAYMENT_ENDPOINT || 'https://us-central1-lawnproatl-85df0.cloudfunctions.net/createSquarePayment', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          sourceId, checkoutId: crypto.randomUUID(),
+          job: {
+            customerName: customer.name, customerEmail: customer.email, customerPhone: customer.phone, address,
+            services: selectedServices, frequency, lawnSizeId: selectedSize?.id, lawnSizeName: selectedSize?.name,
+            lawnSizeRange: selectedSize?.range, measuredArea, scheduledDate: schedule.date, timeWindow: schedule.timeWindow, notes: schedule.notes,
+          },
+        }),
       })
-      setSubmission({ status: 'success', message: 'Your service request has been submitted. A Lawn Pro will claim the job shortly.' })
+      const result = await response.json().catch(() => ({}))
+      if (!response.ok || !result.ok) throw new Error(result.message || 'We could not process your booking deposit.')
+      setSubmission({ status: 'success', message: `Your ${money(result.depositCents)} booking deposit was received. A Lawn Pro will claim the job shortly.` })
     } catch (error) {
       setSubmission({
         status: 'error',
-        message: error?.code === 'permission-denied'
-          ? 'The job system is still being activated. Please try again shortly.'
-          : 'We could not submit your request. Please try again.',
+        message: error?.message || 'We could not process your booking deposit. Please try again.',
       })
     }
   }
@@ -340,7 +328,7 @@ function BookingPage() {
         {step === 4 && (
           <div className="card">
             <h2 className="text-2xl font-bold mb-2">Review your request</h2>
-            <p className="mb-6 text-gray-600">Tell us how to reach you. You will not be charged today.</p>
+            <p className="mb-6 text-gray-600">Tell us how to reach you, then securely pay your 25% booking deposit.</p>
             
             {/* Order Summary */}
             <div className="bg-gray-50 rounded-lg p-6 mb-6">
@@ -362,7 +350,15 @@ function BookingPage() {
                 </div>
                 <div className="border-t pt-3 flex justify-between font-bold text-lg">
                   <span>Total</span>
-                  <span>{formatRange(total, 1.2)}</span>
+                  <span>Starting at {money(checkoutTotalCents)}</span>
+                </div>
+                <div className="flex justify-between text-lawn-700 font-semibold">
+                  <span>Due today (25% deposit)</span>
+                  <span>{money(depositCents)}</span>
+                </div>
+                <div className="flex justify-between text-gray-600 text-sm">
+                  <span>Remaining balance due after service</span>
+                  <span>{money(balanceCents)}</span>
                 </div>
               </div>
             </div>
@@ -372,6 +368,7 @@ function BookingPage() {
               <label className="block text-sm font-semibold text-gray-700">Email<input required type="email" maxLength={254} value={customer.email} onChange={event => setCustomer(current => ({ ...current, email: event.target.value }))} className="mt-2 w-full rounded-lg border border-gray-300 px-4 py-3 font-normal focus:ring-2 focus:ring-lawn-500" /></label>
               <label className="block text-sm font-semibold text-gray-700">Phone number<input required type="tel" maxLength={40} value={customer.phone} onChange={event => setCustomer(current => ({ ...current, phone: event.target.value }))} className="mt-2 w-full rounded-lg border border-gray-300 px-4 py-3 font-normal focus:ring-2 focus:ring-lawn-500" /></label>
             </div>
+            <SquareCardCheckout ref={squareCard} onError={(error) => setSubmission({ status: 'error', message: error.message || 'Secure checkout could not load.' })} />
             {submission.status === 'error' && <div role="alert" className="mt-5 flex gap-3 rounded-xl border border-red-200 bg-red-50 p-4 text-red-800"><AlertCircle className="shrink-0" />{submission.message}</div>}
           </div>
         )}
@@ -398,7 +395,7 @@ function BookingPage() {
                 : ''
             }`}
           >
-            {submission.status === 'loading' ? <span className="flex items-center gap-2"><Loader2 className="h-5 w-5 animate-spin" />Submitting…</span> : step === 4 ? 'Submit service request' : 'Continue'}
+            {submission.status === 'loading' ? <span className="flex items-center gap-2"><Loader2 className="h-5 w-5 animate-spin" />Processing payment…</span> : step === 4 ? `Pay ${money(depositCents)} deposit` : 'Continue'}
           </button>}
         </div>
       </main>
@@ -413,7 +410,7 @@ function BookingPage() {
           <div className="summary-total"><span>Estimated total</span><span>{formatRange(total, 1.2)}</span></div>
         </div>
         {step === 2 && <button type="button" className="summary-continue" disabled={!selectedServices.length} onClick={handleContinue}><ShoppingCart size={20} />Continue to Schedule</button>}
-        <p className="summary-disclaimer">Mowing prices are estimated ranges. XL may exceed the displayed upper amount. Online checkout is coming soon.</p>
+        <p className="summary-disclaimer">A 25% deposit based on the displayed starting estimate is paid online. The remaining balance is due after service; lawn conditions can affect final pricing.</p>
         <div className="summary-benefits"><div><Calendar /><span><strong>Easy Scheduling</strong>Choose your preferred time.</span></div><div><MapPin /><span><strong>Local Lawn Care</strong>Services for your outdoor space.</span></div><div><Leaf /><span><strong>A Healthier Lawn</strong>Care through every season.</span></div></div>
       </aside>
     </div>
