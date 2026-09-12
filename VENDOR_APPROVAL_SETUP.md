@@ -33,7 +33,7 @@ npx firebase-tools deploy --only firestore:rules,firestore:indexes --project law
 4. Open the Firebase verification email and verify the address.
 5. Return to `/admin/vendors`, sign in, and review applications.
 
-The Firestore rules require both the exact project-owner email and a verified email token for admin reads and status updates.
+The Firestore rules authorize the project's exact Firebase admin user ID for admin reads and status updates.
 
 ## Verify the workflow
 
@@ -43,5 +43,15 @@ The Firestore rules require both the exact project-owner email and a verified em
 4. Approve the application in the admin queue.
 5. Sign in at `/vendor/login` with the applicant email and password.
 6. Confirm the approved vendor reaches the dashboard.
+
+## Verify the job flow
+
+1. Submit a customer service request at `/book`.
+2. Confirm a new `PENDING` document appears in the Firestore `jobs` collection.
+3. Sign in as an approved vendor and confirm the request appears under **Available jobs**.
+4. Select **Accept job**.
+5. Confirm it disappears from the available queue and appears under **My jobs** for that vendor.
+
+Job acceptance uses a Firestore transaction, so only one vendor can claim each pending job. Approved vendors can read pending jobs and their own accepted jobs; customer contact details appear in the interface only after acceptance.
 
 Applications submitted before Firestore was connected were delivered by email only and are not backfilled automatically.
