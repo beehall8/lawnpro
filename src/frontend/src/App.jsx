@@ -6,6 +6,7 @@ import VendorDashboard from './pages/VendorDashboard'
 import ServiceCompletion from './pages/ServiceCompletion'
 import VendorPage from './pages/VendorPage'
 import AdminVendorApplications from './pages/AdminVendorApplications'
+import AdminJobs from './pages/AdminJobs'
 import VendorLogin from './pages/VendorLogin'
 import ProtectedVendorRoute from './components/ProtectedVendorRoute'
 
@@ -23,6 +24,7 @@ function App() {
           <Route path="/vendor/complete/:jobId" element={<ServiceCompletion />} />
         </Route>
         <Route path="/admin/vendors" element={<AdminVendorApplications />} />
+        <Route path="/admin/jobs" element={<AdminJobs />} />
       </Routes>
     </div>
   )
