@@ -26,7 +26,7 @@ function JobCard({ job, accepted, accepting, onAccept }) {
       <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-center gap-2">
           <h3 className="text-xl font-bold text-gray-900">{job.serviceNames?.join(' + ') || 'Lawn service'}</h3>
-          {accepted && <span className="rounded-full bg-lawn-100 px-3 py-1 text-sm font-semibold text-lawn-800">Accepted</span>}
+          {accepted && <span className="rounded-full bg-lawn-100 px-3 py-1 text-sm font-semibold text-lawn-800">{job.status === 'COMPLETED' ? 'Completed' : job.status === 'AWAITING_FINAL_PAYMENT' ? 'Awaiting customer payment' : 'Accepted'}</span>}
         </div>
         <p className="mt-2 flex items-start gap-2 text-gray-600"><MapPin className="mt-0.5 h-4 w-4 shrink-0" />{fullAddress}</p>
         <div className="mt-4 flex flex-wrap gap-x-5 gap-y-2 text-sm text-gray-600">
@@ -88,7 +88,9 @@ function VendorDashboard() {
     }
   }, [])
 
-  const displayedJobs = useMemo(() => sortJobs(tab === 'available' ? availableJobs : assignedJobs), [availableJobs, assignedJobs, tab])
+  const activeJobs = useMemo(() => assignedJobs.filter(job => job.status !== 'COMPLETED'), [assignedJobs])
+  const completedJobs = useMemo(() => assignedJobs.filter(job => job.status === 'COMPLETED'), [assignedJobs])
+  const displayedJobs = useMemo(() => sortJobs(tab === 'available' ? availableJobs : tab === 'completed' ? completedJobs : activeJobs), [activeJobs, availableJobs, completedJobs, tab])
 
   const acceptJob = async jobId => {
     if (!auth.currentUser) return
@@ -145,13 +147,14 @@ function VendorDashboard() {
 
       <section className="mt-7 grid gap-4 sm:grid-cols-3">
         <div className="card flex items-center gap-4"><Clock className="h-9 w-9 text-amber-600" /><div><p className="text-2xl font-bold">{availableJobs.length}</p><p className="text-sm text-gray-600">Available jobs</p></div></div>
-        <div className="card flex items-center gap-4"><Briefcase className="h-9 w-9 text-lawn-600" /><div><p className="text-2xl font-bold">{assignedJobs.length}</p><p className="text-sm text-gray-600">My accepted jobs</p></div></div>
+        <div className="card flex items-center gap-4"><Briefcase className="h-9 w-9 text-lawn-600" /><div><p className="text-2xl font-bold">{activeJobs.length}</p><p className="text-sm text-gray-600">Active jobs</p></div></div>
         <div className="card flex items-center gap-4"><DollarSign className="h-9 w-9 text-blue-600" /><div><p className="text-2xl font-bold">{assignedJobs.length ? formatMoneyRange(acceptedValue) : '$0'}</p><p className="text-sm text-gray-600">Accepted job value</p></div></div>
       </section>
 
       <div className="mt-8 flex gap-2 border-b border-gray-200" role="tablist" aria-label="Vendor jobs">
         <button role="tab" aria-selected={tab === 'available'} onClick={() => setTab('available')} className={`border-b-2 px-4 py-3 font-semibold ${tab === 'available' ? 'border-lawn-600 text-lawn-700' : 'border-transparent text-gray-600'}`}>Available jobs ({availableJobs.length})</button>
-        <button role="tab" aria-selected={tab === 'assigned'} onClick={() => setTab('assigned')} className={`border-b-2 px-4 py-3 font-semibold ${tab === 'assigned' ? 'border-lawn-600 text-lawn-700' : 'border-transparent text-gray-600'}`}>My jobs ({assignedJobs.length})</button>
+        <button role="tab" aria-selected={tab === 'assigned'} onClick={() => setTab('assigned')} className={`border-b-2 px-4 py-3 font-semibold ${tab === 'assigned' ? 'border-lawn-600 text-lawn-700' : 'border-transparent text-gray-600'}`}>Active jobs ({activeJobs.length})</button>
+        <button role="tab" aria-selected={tab === 'completed'} onClick={() => setTab('completed')} className={`border-b-2 px-4 py-3 font-semibold ${tab === 'completed' ? 'border-lawn-600 text-lawn-700' : 'border-transparent text-gray-600'}`}>Completed ({completedJobs.length})</button>
       </div>
 
       {error && <div role="alert" className="mt-6 rounded-xl border border-red-200 bg-red-50 p-4 text-red-800">{error}</div>}
@@ -159,8 +162,8 @@ function VendorDashboard() {
         {displayedJobs.map(job => <JobCard key={job.id} job={job} accepted={tab === 'assigned'} accepting={acceptingId === job.id} onAccept={acceptJob} />)}
       </div> : <section className="mt-8 rounded-2xl border border-dashed border-gray-300 bg-white p-12 text-center">
         <Briefcase className="mx-auto h-12 w-12 text-gray-400" />
-        <h2 className="mt-4 text-xl font-bold text-gray-800">{tab === 'available' ? 'No jobs are available right now' : 'You have not accepted a job yet'}</h2>
-        <p className="mt-2 text-gray-600">{tab === 'available' ? 'New customer requests will appear here automatically.' : 'Choose an available job and accept it to add it here.'}</p>
+        <h2 className="mt-4 text-xl font-bold text-gray-800">{tab === 'available' ? 'No jobs are available right now' : tab === 'completed' ? 'No completed jobs yet' : 'You have no active jobs'}</h2>
+        <p className="mt-2 text-gray-600">{tab === 'available' ? 'New customer requests will appear here automatically.' : tab === 'completed' ? 'Paid jobs will move here automatically.' : 'Choose an available job and accept it to add it here.'}</p>
       </section>}
     </main>
   </div>
