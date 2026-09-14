@@ -1,4 +1,4 @@
-import { createHash, randomUUID } from 'node:crypto'
+import { createHash, createHmac, randomUUID, timingSafeEqual } from 'node:crypto'
 import { initializeApp } from 'firebase-admin/app'
 import { FieldValue, getFirestore } from 'firebase-admin/firestore'
 import { defineSecret } from 'firebase-functions/params'
@@ -8,8 +8,10 @@ initializeApp()
 
 const db = getFirestore()
 const squareAccessToken = defineSecret('SQUARE_ACCESS_TOKEN')
+const squareWebhookSignatureKey = defineSecret('SQUARE_WEBHOOK_SIGNATURE_KEY')
 const squareLocationId = 'L37NGBKVQJB1T'
 const depositRate = 0.25
+const squareWebhookUrl = 'https://us-central1-lawnproatl-85df0.cloudfunctions.net/squareWebhook'
 const allowedOrigins = new Set(['https://lawnproatl.com', 'https://www.lawnproatl.com'])
 
 const services = {
@@ -185,6 +187,8 @@ export const requestFinalPayment = onCall({ region: 'us-central1', secrets: [squ
       status: 'AWAITING_FINAL_PAYMENT',
       completion: { photoUrls, notes: notes?.trim() || '', completedAt: FieldValue.serverTimestamp(), completedBy: request.auth.uid },
       finalPayment: { provider: 'SQUARE_INVOICE', invoiceId: published.invoice.id, orderId: order.order.id, customerId: customer.customer.id, status: published.invoice.status, balanceCents, sentAt: FieldValue.serverTimestamp() },
+      payoutStatus: 'WAITING_FOR_CUSTOMER',
+      payoutAmountCents: job.pricing.serviceSubtotalCents,
     })
     return { ok: true, invoiceStatus: published.invoice.status, balanceCents }
   } catch (error) {
@@ -192,4 +196,40 @@ export const requestFinalPayment = onCall({ region: 'us-central1', secrets: [squ
     await jobRef.update({ status: 'ACCEPTED' }).catch(() => {})
     throw new HttpsError('internal', 'We could not send the final payment request. Please try again.')
   }
+})
+
+
+function validSquareSignature(signature, rawBody) {
+  if (!signature || !rawBody) return false
+  const expected = createHmac('sha256', squareWebhookSignatureKey.value())
+    .update(squareWebhookUrl + rawBody.toString('utf8'))
+    .digest('base64')
+  const received = Buffer.from(signature)
+  const calculated = Buffer.from(expected)
+  return received.length === calculated.length && timingSafeEqual(received, calculated)
+}
+
+export const squareWebhook = onRequest({ region: 'us-central1', secrets: [squareWebhookSignatureKey] }, async (req, res) => {
+  if (req.method !== 'POST') return res.status(405).send('Method not allowed')
+  if (!validSquareSignature(req.get('x-square-hmacsha256-signature'), req.rawBody)) return res.status(403).send('Invalid signature')
+
+  const invoice = req.body?.data?.object?.invoice
+  if (!invoice?.id || invoice.status !== 'PAID') return res.status(200).send('Ignored')
+
+  const matches = await db.collection('jobs').where('finalPayment.invoiceId', '==', invoice.id).limit(1).get()
+  if (matches.empty) return res.status(200).send('Job not found')
+
+  const jobRef = matches.docs[0].ref
+  const job = matches.docs[0].data()
+  if (job.status !== 'COMPLETED') {
+    await jobRef.update({
+      status: 'COMPLETED',
+      'finalPayment.status': 'PAID',
+      'finalPayment.paidAt': FieldValue.serverTimestamp(),
+      payoutStatus: 'READY',
+      payoutAmountCents: job.pricing?.serviceSubtotalCents || 0,
+      completedAt: FieldValue.serverTimestamp(),
+    })
+  }
+  return res.status(200).send('OK')
 })
