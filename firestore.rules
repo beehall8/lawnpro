@@ -76,6 +76,13 @@ service cloud.firestore {
         && request.resource.data.assignedVendorId == request.auth.uid
         && request.resource.data.acceptedAt == request.time;
 
+      allow update: if isAdmin()
+        && resource.data.status == 'COMPLETED'
+        && request.resource.data.diff(resource.data).affectedKeys()
+          .hasOnly(['payoutStatus', 'payoutPaidAt'])
+        && request.resource.data.payoutStatus == 'PAID'
+        && request.resource.data.payoutPaidAt == request.time;
+
       allow delete: if false;
     }
   }
