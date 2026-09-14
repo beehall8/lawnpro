@@ -3,9 +3,9 @@ import './BookingPage.css'
 import { useRef, useState } from 'react'
 import { launchZips, validateAddress } from '../shared/lawn-estimation.mjs'
 import { lawnSizes, estimateRange, formatRange } from '../shared/lawn-sizes.mjs'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import SquareCardCheckout from '../components/SquareCardCheckout'
-import { AlertCircle, Check, CheckCircle, MapPin, Calendar, Clock, Leaf, Loader2, ShieldCheck, ShoppingCart, Tag, Scissors, Sprout, Wind, Ruler, Droplets } from 'lucide-react'
+import { AlertCircle, Check, MapPin, Calendar, Clock, Leaf, Loader2, ShieldCheck, ShoppingCart, Tag, Scissors, Sprout, Wind, Ruler, Droplets } from 'lucide-react'
 
 const services = [
   { id: 'mowing', name: 'Mowing', price: 35, icon: '🌱', description: 'Professional lawn mowing with cleanup' },
@@ -25,6 +25,7 @@ const frequencies = [
 ]
 
 function BookingPage() {
+  const navigate = useNavigate()
   const [step, setStep] = useState(1)
   const [selectedServices, setSelectedServices] = useState([])
   const [frequency, setFrequency] = useState('onetime')
@@ -104,24 +105,22 @@ function BookingPage() {
       })
       const result = await response.json().catch(() => ({}))
       if (!response.ok || !result.ok) throw new Error(result.message || 'We could not process your booking deposit.')
-      setSubmission({ status: 'success', message: `Your ${money(result.depositCents)} booking deposit was received. A Lawn Pro will claim the job shortly.` })
+      const confirmation = {
+        depositCents: result.depositCents,
+        balanceCents: result.balanceCents,
+        scheduledDate: schedule.date,
+        timeWindow: schedule.timeWindow,
+        address: [address.street, address.city, address.state, address.zip].filter(Boolean).join(', '),
+        services: services.filter(service => selectedServices.includes(service.id)).map(service => service.name),
+      }
+      sessionStorage.setItem(`lawnProBooking:${result.jobId}`, JSON.stringify(confirmation))
+      navigate(`/booking-confirmation/${result.jobId}`, { state: confirmation, replace: true })
     } catch (error) {
       setSubmission({
         status: 'error',
         message: error?.message || 'We could not process your booking deposit. Please try again.',
       })
     }
-  }
-
-  if (submission.status === 'success') {
-    return <main className="grid min-h-screen place-items-center bg-lawn-50 px-4">
-      <section className="card max-w-lg text-center">
-        <CheckCircle className="mx-auto h-16 w-16 text-lawn-600" />
-        <h1 className="mt-5 text-3xl font-bold text-gray-900">Service request received</h1>
-        <p className="mt-3 text-gray-600">{submission.message}</p>
-        <Link to="/" className="btn-primary mt-7 inline-block">Return home</Link>
-      </section>
-    </main>
   }
 
   return (
