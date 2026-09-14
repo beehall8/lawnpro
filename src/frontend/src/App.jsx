@@ -1,6 +1,7 @@
 import { Routes, Route } from 'react-router-dom'
 import HomePage from './pages/HomePage'
 import BookingPage from './pages/BookingPage'
+import BookingConfirmation from './pages/BookingConfirmation'
 import VendorDashboard from './pages/VendorDashboard'
 import ServiceCompletion from './pages/ServiceCompletion'
 import VendorPage from './pages/VendorPage'
@@ -14,6 +15,7 @@ function App() {
       <Routes>
         <Route path="/" element={<HomePage />} />
         <Route path="/book" element={<BookingPage />} />
+        <Route path="/booking-confirmation/:jobId" element={<BookingConfirmation />} />
         <Route path="/vendors" element={<VendorPage />} />
         <Route path="/vendor/login" element={<VendorLogin />} />
         <Route element={<ProtectedVendorRoute />}>
