@@ -35,3 +35,20 @@ Use Square **Sandbox** credentials and change both public IDs plus the function 
   ```bash
   firebase deploy --only functions,firestore:rules,storage
   ```
+
+## Final-payment webhook
+
+Create a Production webhook subscription in the Square Developer Dashboard with this notification URL:
+
+```text
+https://us-central1-lawnproatl-85df0.cloudfunctions.net/squareWebhook
+```
+
+Subscribe to `invoice.payment_made` and `invoice.updated`. Copy the subscription's Signature Key, then save it in Firebase Secret Manager without putting it in Git or the frontend:
+
+```bash
+firebase functions:secrets:set SQUARE_WEBHOOK_SIGNATURE_KEY
+firebase deploy --only functions,firestore:rules
+```
+
+When Square reports the final invoice as paid, the signed webhook changes the job to `COMPLETED` and makes the service subtotal ready for manual vendor payout. The admin records the payout at `/admin/jobs`.
